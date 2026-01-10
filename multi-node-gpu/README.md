@@ -1,5 +1,5 @@
 # multi-node-gpu setting for kubeflow
-## **GPU 관련 필수 작업 3단계**
+## **1. GPU 관련 필수 작업 3단계**
 ### 1.GPU 노드 OS 레벨 사전 조건 (GPU Worker)
 필수
 * NVIDIA Driver
@@ -8,6 +8,13 @@
 # NVIDIA 드라이버
 sudo apt install -y nvidia-driver-535
 
+# 저장소 GPG 키 및 리스트 다운로드
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+  && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+sudo apt-get update
 # containerd 사용 시
 sudo apt install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=containerd
@@ -112,7 +119,7 @@ kubectl run gpu-test --rm -it --restart=Never --image=nvidia/cuda:12.2.0-base-ub
 
 ```
 
-## **kubespray 설치**
+## **2. kubespray 설치**
 ### 0. python version change
 ```bash
 sudo apt update
@@ -210,9 +217,16 @@ kube_proxy_strict_arp: true
 # 대괄호([작업이름]) 안 글자 전체가 작업이름입니다.
 (venv) ansible-playbook -i inventory/mycluster/inventory.ini cluster.yml -b --start-at-task="작업이름" --limit node1
 ```
+### 9. context config 파일 복사
+```bash
+mkdir -p ~/.kube
+sudo cp /etc/kubernetes/admin.conf ~/.kube/config-<HOSTNAME>
+sudo chown $(id -u):$(id -g) ~/.kube/config-<HOSTNAME>
+chmod 600 ~/.kube/config-<HOSTNAME>
+```
 
 
-## **kubeflow 설치**
+## **3. kubeflow 설치**
 ### 1.권장 버전
 * Kubeflow v1.8.x
 * 설치 방식: Manifests + kustomize

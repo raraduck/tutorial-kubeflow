@@ -102,6 +102,7 @@ kubectl get ns | grep researcher
 ```
 > 참고: 이 과정은 "작업 공간"을 만드는 것입니다. 실제 로그인 비밀번호 설정(Dex 설정)은 별도로 ConfigMap을 수정해야 하는데, 우선은 기본 계정(user@example.com)으로 로그인 후 상단 메뉴에서 이 네임스페이스를 선택해서 사용할 수 있습니다.
 
+## 5. 네트워크 오픈 (접속)
 2단계: Minikube NodePort 열기
 Minikube는 기본적으로 외부 접속을 차단합니다. Kubeflow의 관문인 istio-ingressgateway를 NodePort 타입으로 변경하여 호스트(Ubuntu 서버)의 특정 포트와 연결해야 합니다.
 
@@ -176,4 +177,27 @@ sudo systemctl restart nginx
 접속
 ```bash
 minikube -p node01 service --all
+```
+
+## 6. 자원생성 테스트
+자원생성 에러 발생시
+> [403] Could not find CSRF cookie XSRF-TOKEN in the request. http://<IP>:<PORT>/jupyter/api/namespaces/user/notebooks
+
+해결 방법 1: Jupyter Web App 설정 변경 (가장 유력)
+Jupyter 노트북 화면을 담당하는 포드의 설정을 수정합니다.
+
+Deployment 수정 모드로 진입
+```bash
+kubectl edit deployment -n kubeflow jupyter-web-app-deployment
+```
+```yaml
+# ... 위 내용 생략 ...
+spec:
+  containers:
+  - env:
+    - name: APP_SECURE_COOKIES
+      value: "false"  # <--- 여기를 "true"에서 "false"로 변경!
+    - name: APP_PREFIX
+      value: /jupyter
+# ... 아래 내용 생략 ...
 ```

@@ -33,6 +33,8 @@ grep "imports" /etc/containerd/config.toml
 # default 런타임이 변경되었는지 확인
 grep "default_runtime_name" /etc/containerd/config.toml
 ```
+**[주의: 이하 작업은 kubespray 설치 이후 진행]** 
+
 위 두 가지가 확인되었다면 서비스를 재시작합니다.
 ```bash
 sudo systemctl restart containerd
@@ -208,3 +210,99 @@ kube_proxy_strict_arp: true
 # 대괄호([작업이름]) 안 글자 전체가 작업이름입니다.
 (venv) ansible-playbook -i inventory/mycluster/inventory.ini cluster.yml -b --start-at-task="작업이름" --limit node1
 ```
+
+
+## **kubeflow 설치**
+### 1.권장 버전
+* Kubeflow v1.8.x
+* 설치 방식: Manifests + kustomize
+* 런타임: containerd (이미 OK)
+```bash
+git clone https://github.com/kubeflow/manifests.git
+cd manifests
+git checkout v1.8.0
+```
+### 2.필수 도구
+```bash
+sudo snap install kustomize
+# or
+sudo apt install -y kustomize
+
+kustomize version
+```
+### 3. Kubeflow 전체 설치 (표준)
+**스토리지 클래스**
+1. Provisioner 설치: 가장 간편한 Rancher Local Path Provisioner를 설치하여 노드의 디스크를 사용하도록 설정합니다.
+```bash
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml
+```
+2. Default StorageClass로 지정 (매우 중요): 이 설정이 있어야 Kubeflow가 "아, 여기서 공간을 얻으면 되는구나" 하고 Pending을 풉니다.
+```bash
+kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+```
+3. 확인: 제대로 적용되었는지 확인: 다시 kubectl get sc를 입력했을 때, 아래처럼 이름 옆에 (default)가 붙어야 합니다.
+```bash
+kubectl get sc
+# NAME                   PROVISIONER ...
+# local-path (default)   rancher.io/local-path ...
+```
+4. 이제 설치 루프 실행
+(default)가 확인되었다면, 아까 준비하신 설치 스크립트를 실행하세요. 이제 스토리지 문제가 해결되어 설치가 정상적으로 진행될 것입니다.
+```bash
+# while ! kustomize build example \
+#   --load-restrictor LoadRestrictionsNone \
+#   | kubectl apply -f -; do
+#   echo "Retrying to apply resources..."
+#   sleep 10
+# done
+# # or
+while ! kustomize build example | kubectl apply -f -; do
+  echo "Retrying to apply resources..."
+  sleep 10
+done
+```
+
+5. MINIO 문제
+```bash
+# kubectl set image deployment/minio -n kubeflow minio=gcr.io/ml-pipeline/minio:RELEASE.2019-08-14T20-37-41Z-license-compliance
+# -license-compliance 접미사를 뺀 공식 태그를 사용합니다.
+kubectl set image deployment/minio -n kubeflow minio=minio/minio:RELEASE.2019-08-14T20-37-41Z
+```
+
+6. ml-pipeline-ui 문제 (미해결상태 gcr.io 경로가 deprecated 됨)
+```bash
+# UI 이미지를 gcr.io의 확실한 태그로 강제 지정
+kubectl set image deployment/ml-pipeline-ui -n kubeflow ml-pipeline-ui=gcr.io/ml-pipeline/frontend:1.8.5
+# 1. 이미지 저장소 변경 (us-docker -> gcr.io)
+kubectl set image deployment/ml-pipeline-ui -n kubeflow ml-pipeline-ui=gcr.io/ml-pipeline/frontend:2.0.3
+# 가장 안정적인 버전
+# (대안) 가장 안정적인 호환 버전 사용
+kubectl set image deployment/ml-pipeline-ui -n kubeflow ml-pipeline-ui=gcr.io/ml-pipeline/frontend:2.0.0-alpha.7
+kubectl set image deployment/ml-pipeline-ui -n kubeflow ml-pipeline-ui=gcr.io/ml-pipeline/frontend:1.8.5
+kubectl set image deployment/ml-pipeline-ui -n kubeflow ml-pipeline-ui=gcr.io/ml-pipeline/frontend:2.0.5
+kubectl set image deployment/ml-pipeline-ui -n kubeflow ml-pipeline-ui=docker.io/kubeflownotebookswg/kfp-frontend:2.0.5
+# 1. Docker Hub 이미지로 교체
+kubectl set image deployment/ml-pipeline-ui -n kubeflow ml-pipeline-ui=docker.io/kubeflow/frontend:2.0.0-alpha.7
+```
+좀비 포드 정리 (필수)
+```bash
+# 에러 상태인 UI 포드 삭제 -> Deployment가 새 설정으로 다시 띄움
+kubectl delete pod -n kubeflow -l app=ml-pipeline-ui
+```
+
+7. 접속하기
+
+구글크롬설치
+```bash
+sudo apt update
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo dpkg -i google-chrome-stable_current_amd64.deb
+```
+
+* Kubeflow 대시보드 서비스 확인
+kubectl get svc -n kubeflow | grep istio-ingressgateway
+
+* Port-forward로 접속 (개발/테스트 환경)
+kubectl port-forward svc/istio-ingressgateway -n istio-system 8080:80
+
+> 브라우저에서: http://localhost:8080

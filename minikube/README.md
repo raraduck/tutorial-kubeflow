@@ -26,6 +26,8 @@ kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisione
 kubectl patch storageclass standard -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
 # 2. local-path를 default로 설정 (true로 변경)
 kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+# 3. 확인: 제대로 적용되었는지 확인 이름 옆에 (default)가 붙어야 합니다.
+kubectl get sc
 ```
 
 ## 3. Install kubeflow
@@ -40,6 +42,18 @@ cd manifests
 
 # Kubeflow 설치 (시간 소요: 10-20분)
 while ! kustomize build example | kubectl apply -f -; do echo "Retrying to apply resources"; sleep 10; done
+
+# Minikube에서는 jobset-controller-manager 비활성화 권장
+# Minikube에서 불필요한 컨트롤러 제거
+kubectl delete deploy -n kubeflow-system \
+  kubeflow-trainer-controller-manager \
+  jobset-controller-manager
+
+kubectl delete deploy -n kubeflow \
+  kserve-controller-manager \
+  kserve-localmodel-controller-manager \
+  spark-operator-controller \
+  spark-operator-webhook
 
 # 설치 확인
 kubectl get pods -n kubeflow
@@ -140,7 +154,7 @@ sudo vim /etc/nginx/sites-available/kubeflow
 설정 내용 입력 아래 내용에서 <MINIKUBE_IP>와 <NODE_PORT>를 아까 확인한 값으로 바꿔서 넣으세요. (특히 Jupyter Notebook은 WebSocket을 쓰므로 관련 설정이 필수입니다.)
 ```nginx
 server {
-   listen 80;
+   listen 10008; # 80;
    server_name _;  # 또는 도메인이 있다면 도메인 입력
 
    location / {
@@ -189,6 +203,7 @@ Jupyter 노트북 화면을 담당하는 포드의 설정을 수정합니다.
 Deployment 수정 모드로 진입
 ```bash
 kubectl edit deployment -n kubeflow jupyter-web-app-deployment
+kubectl edit deployment -n kubeflow tensorboards-web-app-deployment
 ```
 ```yaml
 # ... 위 내용 생략 ...
@@ -197,7 +212,19 @@ spec:
   - env:
     - name: APP_SECURE_COOKIES
       value: "false"  # <--- 여기를 "true"에서 "false"로 변경!
-    - name: APP_PREFIX
-      value: /jupyter
 # ... 아래 내용 생략 ...
+```
+
+```bash
+# 동일 문제 예방 체크리스트 (중요 ⭐)
+
+# 아래 Web App들은 모두 같은 방식 필요합니다:
+
+# Web App	Deployment
+# Jupyter	jupyter-web-app-deployment
+# TensorBoard	tensorboards-web-app-deployment
+# Volumes	volumes-web-app-deployment
+# KServe Models UI	kserve-models-web-app
+
+APP_SECURE_COOKIES=false
 ```

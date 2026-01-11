@@ -4,42 +4,81 @@
 필수
 * NVIDIA Driver
 * NVIDIA Container Toolkit
+1. 추천 드라이버: nvidia-driver-535-server
+- 안정성 (LTS): 535 버전은 NVIDIA의 LTS(Long Term Support) 브랜치입니다. Kubernetes와 같은 인프라 환경에서는 최신 기능보다 안정성이 최우선입니다.
+- 호환성 (V100 & P100): V100과 P100은 세대가 다릅니다(Volta vs Pascal). 너무 최신 드라이버는 구형 아키텍처(P100)에서 예기치 않은 버그가 발생할 수 있습니다. 535버전은 두 카드를 모두 완벽하게 지원하는 검증된 버전입니다.
+- CUDA 버전: 535 드라이버는 CUDA 12.2까지 지원합니다. 이는 최신 PyTorch, TensorFlow 등을 구동하기에 충분합니다.
+- Server 패키지: 데스크탑용(nvidia-driver-535) 대신 서버용(-server) 패키지는 불필요한 그래픽 패키지(X11 관련) 의존성을 줄이고 연산(Compute)에 최적화되어 있습니다.
 ```bash
-# NVIDIA 드라이버
-sudo apt install -y nvidia-driver-535
-
-# 저장소 GPG 키 및 리스트 다운로드
+# 2. NVIDIA 드라이버 설치
+# 설치 여부 확인
+dpkg -l | grep nvidia-container-toolkit
+# 아무것도 안 나온다면: 아래 명령어로 설치합니다.
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
-  && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+&& curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
 sudo apt-get update
-# containerd 사용 시
-sudo apt install -y nvidia-container-toolkit
+sudo apt-get install -y nvidia-container-toolkit
+
 sudo nvidia-ctk runtime configure --runtime=containerd
 ```
 * /etc/containerd/config.toml
 ```toml
 # vim /etc/containerd/config.toml
 version = 2
-imports = ["/etc/containerd/conf.d/*.toml"]  # <--- 이 줄이 핵심입니다!
+root = "/var/lib/containerd"
+state = "/run/containerd"
 
-# ... (중간 내용 생략) ...
+[grpc]
+  address = "/run/containerd/containerd.sock"
+  uid = 0
+  gid = 0
 
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  default_runtime_name = "nvidia"            # <--- "runc"를 "nvidia"로 변경
-  snapshotter = "overlayfs"
+[plugins]
+  [plugins."io.containerd.grpc.v1.cri"]
+    sandbox_image = "registry.k8s.io/pause:3.9"
+
+    [plugins."io.containerd.grpc.v1.cri".containerd]
+      # [핵심 1] 기본 런타임을 nvidia로 변경
+      default_runtime_name = "nvidia"
+      snapshotter = "overlayfs"
+
+      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+        # [핵심 2] NVIDIA 런타임 정의 (오타 없음)
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
+          privileged_without_host_devices = false
+          runtime_engine = ""
+          runtime_root = ""
+          runtime_type = "io.containerd.runc.v2"
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
+            BinaryName = "/usr/bin/nvidia-container-runtime"
+            SystemdCgroup = true
+
+        # 일반 runc 런타임 정의
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+          runtime_type = "io.containerd.runc.v2"
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+            BinaryName = "/usr/local/bin/runc"
+            SystemdCgroup = true
 ```
 1. 맨 윗줄에 `version = 2`가 있다면 그대로 둡니다.
 2. 그 아래에 `imports` 라인을 추가합니다.
 3. `[plugins."io.containerd.grpc.v1.cri".containerd]` 섹션을 찾아 `default_runtime_name`을 `nvidia`로 바꿉니다.
+4. nvidia 런타임 Binary 경로도 추가
 ```bash
 # imports 설정이 들어갔는지 확인
 grep "imports" /etc/containerd/config.toml
 # default 런타임이 변경되었는지 확인
 grep "default_runtime_name" /etc/containerd/config.toml
+# nvidia 런타임 Binary 경로 확인
+sudo containerd config dump | grep "nvidia-container-runtime"
+# BinaryName = "/usr/bin/nvidia-container-runtime"
+grep "BinaryName" /etc/containerd/config.toml
+# 결과 예시: BinaryName = "/usr/bin/nvidia-container-runtime"
 ```
+
 **[주의: 이하 작업은 kubespray 설치 이후 진행]** 
 
 위 두 가지가 확인되었다면 서비스를 재시작합니다.
@@ -182,6 +221,23 @@ EOF
 helm_enabled: true
 metrics_server_enabled: true   
 ingress_nginx_enabled: true
+
+# <... 내용생략 후, 마지막줄 이후>
+
+# 1. NVIDIA GPU 가속 기능 활성화 (필수)
+# 이 옵션이 켜져야 containerd 설정에 nvidia-runtime을 추가해줍니다.
+nvidia_accelerator_enabled: true
+
+# 2. 드라이버 설치 비활성화 (매우 중요!)
+# 이미 직접 설치하셨으므로 false로 설정해야 충돌이 안 납니다.
+nvidia_driver_install: false
+
+# 3. GPU Device Plugin 설치 (필수)
+# K8s가 GPU 자원을 인식하고 파드에 할당하기 위해 필요한 플러그인입니다.
+nvidia_gpu_device_plugin_enabled: true
+
+# (선택사항) MIG(Multi-Instance GPU) 기능이 필요 없다면 명시적으로 끕니다. (V100/P100은 보통 false)
+nvidia_gpu_device_plugin_mig_strategy: "none"
 ```
 * inventory/mycluster/group_vars/k8s_cluster/k8s-cluster.yml
 ```bash
@@ -225,19 +281,23 @@ sudo chown $(id -u):$(id -g) ~/.kube/config-<HOSTNAME>
 chmod 600 ~/.kube/config-<HOSTNAME>
 ```
 
+### 10. labels 설정
+
+
 
 ## **3. kubeflow 설치**
 ### 1.권장 버전
-* Kubeflow v1.8.x
 * 설치 방식: Manifests + kustomize
 * 런타임: containerd (이미 OK)
 ```bash
 git clone https://github.com/kubeflow/manifests.git
 cd manifests
-git checkout v1.8.0
 ```
 ### 2.필수 도구
 ```bash
+curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+sudo mv kustomize /usr/local/bin/
+# or
 sudo snap install kustomize
 # or
 sudo apt install -y kustomize
@@ -274,6 +334,15 @@ while ! kustomize build example | kubectl apply -f -; do
   echo "Retrying to apply resources..."
   sleep 10
 done
+
+# or
+
+# --server-side 옵션과 --force-conflicts 옵션 추가
+while ! kustomize build example | sed 's/$(profile-name)/kubeflow-user/g' | kubectl apply --server-side --force-conflicts -f -; do
+  echo "Retrying to apply resources..."
+  sleep 15
+done
+
 ```
 
 5. MINIO 문제

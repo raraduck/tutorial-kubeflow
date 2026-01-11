@@ -342,7 +342,6 @@ while ! kustomize build example | sed 's/$(profile-name)/kubeflow-user/g' | kube
   echo "Retrying to apply resources..."
   sleep 15
 done
-
 ```
 
 5. MINIO 문제
@@ -389,3 +388,76 @@ kubectl get svc -n kubeflow | grep istio-ingressgateway
 kubectl port-forward svc/istio-ingressgateway -n istio-system 8080:80
 
 > 브라우저에서: http://localhost:8080
+
+
+# 연결하기
+
+## 1. 노드포트 열고, nginx로 리버스프록시
+
+```bash
+# 1. Istio Ingress Gateway 서비스 수정 (패치)
+kubectl patch svc istio-ingressgateway -n istio-system \
+  --type='json' \
+  -p='[{"op": "replace", "path": "/spec/type", "value": "NodePort"}, {"op": "replace", "path": "/spec/ports/1/nodePort", "value": 30080}]'
+
+# or 
+
+kubectl edit svc istio-ingressgateway -n istio-system
+# ClusterIP 를 NodePort 로 변경
+kubectl get svc -n istio-system istio-ingressgateway
+# 외부로 열린 포트번호 확인
+```
+
+## 2. Nginx 설치 (안 되어 있다면)
+```bash
+sudo apt update
+sudo apt install -y nginx
+sudo vim /etc/nginx/sites-available/kubeflow
+```
+아래 내용을 복사해서 붙여넣으세요. (IP 부분은 실제 환경에 맞게 수정 필요)
+```nginx
+# Upstream 설정: 트래픽을 보낼 워커 노드들의 IP와 NodePort를 적습니다.
+upstream kubeflow-cluster {
+    # CL00, Node01, Node02 어디든 30080이 열려있으므로 다 적어주면 로드밸런싱 됩니다.
+    server 10.246.246.xx:30080;  # CL00 IP (만약 마스터에도 스케줄링 되면)
+    server 10.246.246.yy:30080;  # Node01 IP
+    server 10.246.246.zz:30080;  # Node02 IP
+}
+
+server {
+    listen 80;
+    server_name _;  # 도메인이 있다면 도메인을 적고, 없으면 _ (모든 요청)
+
+    location / {
+        proxy_pass http://kubeflow-cluster;
+        
+        # 헤더 전달 (필수)
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 웹소켓 지원 (Jupyter Notebook 사용 시 필수)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+설정 활성화 및 재시작
+```bash
+# 심볼릭 링크 생성
+sudo ln -s /etc/nginx/sites-available/kubeflow /etc/nginx/sites-enabled/
+
+# 문법 검사
+sudo nginx -t
+
+# Nginx 재시작
+sudo systemctl restart nginx
+```
+3단계: 접속 테스트
+이제 외부(내 PC 브라우저)에서 호스트(CL00)의 공인 IP를 입력하고 접속해 봅니다.
+
+주소: http://<CL00의-외부-IP>
+
+로그인 창이 뜨면 성공입니다! (Email: user@example.com / PW: 12341234)

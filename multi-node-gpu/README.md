@@ -472,3 +472,17 @@ sudo systemctl restart nginx
 주소: http://<CL00의-외부-IP>
 
 로그인 창이 뜨면 성공입니다! (Email: user@example.com / PW: 12341234)
+
+### Lens 설치시 nginx stream 기능으로 https 를 kubernetes api로 바로 전달해야함
+```bash
+stream {
+    upstream kubernetes_api {
+        server 127.0.0.1:6443;
+    }
+
+    server {
+        listen 10000; # 외부 개방 포트 중 하나
+        proxy_pass kubernetes_api;
+    }
+}
+```

@@ -49,6 +49,14 @@ state = "/run/containerd"
       snapshotter = "overlayfs"
 
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+
+        # 2. NVIDIA 런타임 추가 (간단)
+        # [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
+        #   runtime_type = "io.containerd.runc.v2"
+        #   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
+        #     BinaryName = "/usr/bin/nvidia-container-runtime"
+        #     SystemdCgroup = true
+
         # [핵심 2] NVIDIA 런타임 정의 (오타 없음)
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
           privileged_without_host_devices = false

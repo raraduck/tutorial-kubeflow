@@ -22,6 +22,9 @@ Port 2022
 # 2. SSH 서비스 재시작 및 방화벽 허용:
 sudo systemctl restart ssh
 sudo ufw allow 2022/tcp  # 방화벽 사용 시
+
+# 3. 1022번 포트가 열려 있는지 확인
+ss -tlpn | grep 2022
 ```
 
 ### 3. 접속 테스트
@@ -70,4 +73,5 @@ iptables -I INPUT -p tcp --dport 1022 -j ACCEPT
 --dport 1022: 목적지 포트가 1022번인 경우.
 
 -j ACCEPT: 허용(ACCEPT) 
+
 

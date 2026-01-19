@@ -34,3 +34,40 @@ ssh -p 2022 <userid>@<node ip>
 # 강제 체크 후 업그레이드
 sudo do-release-upgrade
 ```
+
+```bash
+Checking package manager
+
+Continue running under SSH?
+
+This session appears to be running under ssh. It is not recommended
+to perform a upgrade over ssh currently because in case of failure it
+is harder to recover.
+
+If you continue, an additional ssh daemon will be started at port
+'1022'.
+Do you want to continue?
+
+Continue [yN] y
+
+Starting additional sshd
+
+To make recovery in case of failure easier, an additional sshd will
+be started on port '1022'. If anything goes wrong with the running
+ssh you can still connect to the additional one.
+If you run a firewall, you may need to temporarily open this port. As
+this is potentially dangerous it's not done automatically. You can
+open the port with e.g.:
+'iptables -I INPUT -p tcp --dport 1022 -j ACCEPT'
+```
+#### iptables 명령어로방화벽 열기 (다른 명령어)
+iptables -I INPUT -p tcp --dport 1022 -j ACCEPT
+
+-I INPUT: 들어오는(INPUT) 패킷 규칙의 **가장 맨 앞(Insert)**에 이 규칙을 넣어라. (가장 먼저 적용되게 함)
+
+-p tcp: TCP 프로토콜 패킷에 대해.
+
+--dport 1022: 목적지 포트가 1022번인 경우.
+
+-j ACCEPT: 허용(ACCEPT) 
+

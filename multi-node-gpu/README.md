@@ -274,6 +274,9 @@ kube_proxy_strict_arp: true
 ```bash
 (venv) ansible all -i inventory/mycluster/inventory.ini -m apt -a 'update_cache=yes' -b
 (venv) ansible-playbook -i inventory/mycluster/inventory.ini cluster.yml -b
+
+# 설치실패시
+(venv) ansible-playbook -i inventory/mycluster/inventory.ini reset.yml -b
 ```
 ### 8.설치 중 오류 발생 시 
 ```bash

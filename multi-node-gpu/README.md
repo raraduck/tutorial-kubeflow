@@ -42,6 +42,7 @@ sudo nvidia-ctk runtime configure --runtime=containerd --set-as-default
 # 서비스 재시작
 sudo systemctl restart containerd
 ```
+> 만약, config.toml 파일만으로 설정을 완료하고싶을땐 아래와 같이 수정정
 * /etc/containerd/config.toml
 ```toml
 # vim /etc/containerd/config.toml

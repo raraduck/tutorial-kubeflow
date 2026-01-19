@@ -25,7 +25,22 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-contai
 sudo apt-get update
 sudo apt-get install -y nvidia-container-toolkit
 
-sudo nvidia-ctk runtime configure --runtime=containerd
+
+
+# containerd 기본 설정 파일 생성
+sudo mv /etc/containerd/config.toml /etc/containerd/config.toml.bak
+containerd config default | sudo tee /etc/containerd/config.toml
+
+# 쿠버네티스 필수 설정 수정 (SystemdCgroup)
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+
+# NVIDIA 설정 다시 주입
+# NVIDIA 설정을 다시 config.toml 및 conf.d에 반영
+# sudo nvidia-ctk runtime configure --runtime=containerd 
+sudo nvidia-ctk runtime configure --runtime=containerd --set-as-default
+
+# 서비스 재시작
+sudo systemctl restart containerd
 ```
 * /etc/containerd/config.toml
 ```toml

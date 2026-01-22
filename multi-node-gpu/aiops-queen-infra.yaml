@@ -1,0 +1,258 @@
+# ---------------------------------------------------------
+# 1. 네임스페이스 준비 (Bastion용 vs 작업용)
+# ---------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infra  # Bastion이 실제 거주할 관리용 네임스페이스
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aiops  # 실제 리소스를 관리할 작업용 네임스페이스
+---
+
+# ---------------------------------------------------------
+# 2. ServiceAccount (신분증) - infra에서 발급
+# ---------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bastion-sa
+  namespace: infra # 중요: 신분증은 infra 동사무소에서 발급
+---
+
+# ---------------------------------------------------------
+# 3. RBAC (권한 설정) - 3단 콤보
+# ---------------------------------------------------------
+
+# [3-1] Global View: 클러스터 전체 조회 (Pod, Service 등)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: global-view-binding
+subjects:
+- kind: ServiceAccount
+  name: bastion-sa
+  namespace: infra
+roleRef:
+  kind: ClusterRole
+  name: view # k8s 내장 Role (노드 조회 불가능)
+  apiGroup: rbac.authorization.k8s.io
+---
+
+# [3-2] Node Viewer: 노드 조회 전용 (사용자님이 지적하신 빠진 부분 추가)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-viewer # 커스텀 Role 정의
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: global-node-view-binding
+subjects:
+- kind: ServiceAccount
+  name: bastion-sa
+  namespace: infra
+roleRef:
+  kind: ClusterRole
+  name: node-viewer # 위에서 만든 커스텀 Role 연결
+  apiGroup: rbac.authorization.k8s.io
+---
+
+# [3-3] Local Admin: aiops 네임스페이스 전용 관리자
+# "aiops 땅에서는 infra 출신의 bastion-sa가 왕이다"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: aiops-admin-binding
+  namespace: aiops # <--- 권한이 발휘될 장소 (Target)
+subjects:
+- kind: ServiceAccount
+  name: bastion-sa
+  namespace: infra # <--- 권한을 받는 사람의 출신지 (Source)
+roleRef:
+  kind: ClusterRole
+  name: admin # k8s 내장 Role (해당 ns 내 모든 권한)
+  apiGroup: rbac.authorization.k8s.io
+---
+# [3-4] (New!) Argo Full Admin 권한 추가
+# argoproj.io 그룹의 모든 리소스에 대해 '모든 권한(*)' 부여
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-full-admin
+rules:
+- apiGroups: ["argoproj.io"]
+  resources: ["*"] # workflows, workflowtemplates, cronworkflows 등 전부
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: aiops-argo-admin-binding
+  namespace: aiops # 권한은 aiops 내에서만 유효
+subjects:
+- kind: ServiceAccount
+  name: bastion-sa
+  namespace: infra
+roleRef:
+  kind: ClusterRole
+  name: argo-full-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+
+# [2-4] (New!) aiops의 default 계정에게 관리자 권한 부여
+# Argo Workflow가 실행될 때 파드(Pod)를 생성/삭제해야 하므로 이 권한이 필수입니다.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding # <--- 여기가 핵심입니다! (ClusterRoleBinding이 아니라서 admin 권한을 줘도 괜찮음)
+metadata:
+  name: default-admin
+  namespace: aiops  # <--- "이 권한은 aiops 땅에서만 유효하다"는 지역 제한
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: aiops  # 권한을 받는 대상: aiops의 default SA
+roleRef:
+  kind: ClusterRole
+  name: admin       # 부여할 권한: admin (모든 제어 가능) <--- 부여한 계급은 '장군(Admin)'이지만... 
+  apiGroup: rbac.authorization.k8s.io
+---
+
+# ---------------------------------------------------------
+# 4. Bastion 설정 및 배포 (infra 네임스페이스)
+# ---------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bastion-init-script
+  namespace: infra # 설정 파일도 infra에 저장
+data:
+  setup.sh: |
+    #!/bin/bash
+    set -e
+    
+    # 패키지 설치
+    apt-get update && apt-get install -y openssh-server curl vim git sudo less dnsutils iputils-ping tmux
+    
+    # Kubectl 설치
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    chmod +x kubectl
+    mv kubectl /usr/local/bin/
+    
+    # 3. [추가됨] Argo CLI 설치 (Latest 버전)
+    # GitHub에서 최신 릴리즈 다운로드 -> 압축 해제 -> 실행 권한 부여 -> 이동
+    curl -sLO https://github.com/argoproj/argo-workflows/releases/latest/download/argo-linux-amd64.gz
+    gunzip argo-linux-amd64.gz
+    chmod +x argo-linux-amd64
+    mv ./argo-linux-amd64 /usr/local/bin/argo
+    
+    # SSH 및 사용자 설정
+    mkdir -p /run/sshd
+    
+    # 'devops' 사용자 생성 (비밀번호: aiops1234 - 보안을 위해 추후 변경 권장)
+    useradd -m -s /bin/bash devops
+    echo "devops:aiops1234" | chpasswd
+    usermod -aG sudo devops
+    
+    # 환경변수 주입
+    echo "export KUBERNETES_SERVICE_HOST=$KUBERNETES_SERVICE_HOST" >> /home/devops/.bashrc
+    echo "export KUBERNETES_SERVICE_PORT=$KUBERNETES_SERVICE_PORT" >> /home/devops/.bashrc
+    
+    # [핵심] 사용자는 infra에 있지만, 마음(기본 명령)은 aiops에 있도록 설정
+    # 이제 'k get pod'만 쳐도 aiops의 파드가 보입니다.
+    echo "alias k='kubectl -n aiops'" >> /home/devops/.bashrc
+    echo "source <(kubectl completion bash)" >> /home/devops/.bashrc
+    echo "complete -o default -F __start_kubectl k" >> /home/devops/.bashrc
+    
+    # [Alias & Env] 기본 네임스페이스를 aiops로 고정
+    # kubectl은 이미 되어있고, argo도 강제로 aiops만 보게 만듭니다.
+    echo "alias k='kubectl -n aiops'" >> /home/devops/.bashrc
+    
+    # [수정됨] argo 명령어 실행 시 무조건 -n aiops가 붙도록 강제 설정
+    echo "alias argo='argo -n aiops'" >> /home/devops/.bashrc
+    
+    # (혹시 모르니 환경변수도 유지)
+    echo "export ARGO_NAMESPACE=aiops" >> /home/devops/.bashrc
+
+    # 프롬프트 설정 (현재 위치 명확히 표시)
+    echo 'export PS1="\[\033[01;32m\]\u@bastion(\[\033[01;31m\]aiops-controller\[\033[00m\]):\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/devops/.bashrc
+
+    echo "Starting SSH Server..."
+    /usr/sbin/sshd -D
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bastion-server
+  namespace: infra # 배포 위치는 infra
+  labels:
+    app: bastion-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bastion-server
+  template:
+    metadata:
+      labels:
+        app: bastion-server
+    spec:
+      serviceAccountName: bastion-sa
+      # [변경 1] 컨트롤 노드에만 가도록 강제 (Targeting)
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      # [변경 2] 컨트롤 노드의 출입금지(Taint) 무력화 (Ticket)
+      # 이 설정이 없으면 Pending 상태로 멈춰있게 됩니다.
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      # 구버전 K8s 호환성을 위해 master 키도 함께 허용 (선택사항)
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #       - matchExpressions:
+      #         - key: node-role.kubernetes.io/control-plane
+      #           operator: DoesNotExist
+
+      containers:
+      - name: bastion
+        image: ubuntu:22.04
+        command: ["/bin/bash", "/scripts/setup.sh"]
+        ports:
+        - containerPort: 22
+        volumeMounts:
+        - name: init-script
+          mountPath: /scripts
+        securityContext:
+          privileged: false
+      volumes:
+      - name: init-script
+        configMap:
+          name: bastion-init-script
+          defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bastion-svc
+  namespace: infra
+spec:
+  type: NodePort
+  selector:
+    app: bastion-server
+  ports:
+  - port: 22
+    targetPort: 22
+    nodePort: 32222

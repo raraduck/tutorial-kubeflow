@@ -39,6 +39,17 @@ argo submit 등 워크플로우 관련 명령 역시 동일한 SA 권한을 공�
 감사 로그 모니터링: aiops-bastion-sa를 통해 수행되는 모든 API 호출 내역을 기록하여 보안 감사 추적성 유지.
 접속 IP 제한: NodePort로 노출된 포트에 대해 사내 특정 IP 대역에서만 접근 가능하도록 방화벽(ACL) 추가 적용.
 
+## Appendix. (중요) aiops에서 워크플로우 실행을 위한 권한 설정
+Argo를 argo 네임스페이스에 설치했지만, 실제 워크플로우는 aiops 네임스페이스에서 돌리고 싶으실 겁니다. aiops 네임스페이스에서 워크플로우가 파드를 생성하려면 default ServiceAccount에 권한이 있어야 합니다.
+
+간단하게 aiops의 기본 계정에 관리자 권한을 주는 명령어를 실행해 두세요. (이게 없으면 나중에 워크플로우 돌릴 때 Permission Denied 뜹니다.)
+```bash
+# aiops의 default 계정에게 admin 권한 부여 (워크플로우 실행용)
+kubectl create rolebinding default-admin \
+  --clusterrole=admin \
+  --serviceaccount=aiops:default \
+  -n aiops
+```
 ---
 **Last Updated:** 2026-01-22  
 **Changes:** Implement security strategy with Bastion Server and RBAC

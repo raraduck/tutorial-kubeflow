@@ -107,7 +107,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ---
 
-# [2-4] (New!) aiops의 default 계정에게 관리자 권한 부여
+# [3-5] (New!) aiops의 default 계정에게 관리자 권한 부여
 # Argo Workflow가 실행될 때 파드(Pod)를 생성/삭제해야 하므로 이 권한이 필수입니다.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding # <--- 여기가 핵심입니다! (ClusterRoleBinding이 아니라서 admin 권한을 줘도 괜찮음)

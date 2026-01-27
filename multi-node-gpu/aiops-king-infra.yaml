@@ -1,0 +1,568 @@
+# =============================================================
+# aiops-king-infra.yaml
+# 보안 강화 버전: aiops 네임스페이스 전용 관리자 Bastion 서버
+# =============================================================
+
+# ---------------------------------------------------------
+# 1. 네임스페이스 준비
+# ---------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infra
+  labels:
+    name: infra
+    purpose: management
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aiops
+  labels:
+    name: aiops
+    purpose: workload
+---
+
+# ---------------------------------------------------------
+# 2. ServiceAccount (Bastion 전용)
+# ---------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bastion-sa
+  namespace: infra
+automountServiceAccountToken: true
+---
+
+# ---------------------------------------------------------
+# 3. RBAC 권한 설정 (최소 권한 원칙 적용)
+# ---------------------------------------------------------
+
+# [3-1] 클러스터 전체 읽기 전용 (view)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bastion-global-view
+subjects:
+- kind: ServiceAccount
+  name: bastion-sa
+  namespace: infra
+roleRef:
+  kind: ClusterRole
+  name: view
+  apiGroup: rbac.authorization.k8s.io
+---
+
+# [3-2] 노드 조회 전용 ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-viewer
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bastion-node-view
+subjects:
+- kind: ServiceAccount
+  name: bastion-sa
+  namespace: infra
+roleRef:
+  kind: ClusterRole
+  name: node-viewer
+  apiGroup: rbac.authorization.k8s.io
+---
+
+# [3-3] aiops 네임스페이스 전용 관리자 권한
+# RoleBinding으로 aiops 내에서만 admin 권한 부여
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bastion-aiops-admin
+  namespace: aiops
+subjects:
+- kind: ServiceAccount
+  name: bastion-sa
+  namespace: infra
+roleRef:
+  kind: ClusterRole
+  name: admin
+  apiGroup: rbac.authorization.k8s.io
+---
+
+# [3-4] Argo Workflows 전용 Role (aiops 한정)
+# ClusterRole 대신 namespace-scoped Role 사용
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-workflow-admin
+  namespace: aiops
+rules:
+- apiGroups: ["argoproj.io"]
+  resources:
+  - workflows
+  - workflowtemplates
+  - cronworkflows
+  - clusterworkflowtemplates
+  - workflowartifactgctasks
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bastion-argo-admin
+  namespace: aiops
+subjects:
+- kind: ServiceAccount
+  name: bastion-sa
+  namespace: infra
+roleRef:
+  kind: Role
+  name: argo-workflow-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+
+# [3-5] Argo Workflow 실행 전용 ServiceAccount (default 대신 사용)
+# default SA에 admin 권한 부여하지 않음!
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-workflow-executor
+  namespace: aiops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-executor-role
+  namespace: aiops
+rules:
+# Pod 생성/삭제 (워크플로우 스텝 실행용)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "create", "delete", "patch"]
+# Pod 로그 조회
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list", "watch"]
+# ConfigMap/Secret 읽기 (파라미터 전달용)
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+# PVC 관리 (아티팩트 저장용)
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+# Workflow 상태 업데이트
+- apiGroups: ["argoproj.io"]
+  resources: ["workflows", "workflowtaskresults"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-executor-binding
+  namespace: aiops
+subjects:
+- kind: ServiceAccount
+  name: argo-workflow-executor
+  namespace: aiops
+roleRef:
+  kind: Role
+  name: argo-executor-role
+  apiGroup: rbac.authorization.k8s.io
+---
+
+# ---------------------------------------------------------
+# 4. NetworkPolicy (네트워크 격리)
+# ---------------------------------------------------------
+
+# Bastion Pod 네트워크 정책
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bastion-network-policy
+  namespace: infra
+spec:
+  podSelector:
+    matchLabels:
+      app: bastion-server
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # SSH 접속은 내부 네트워크에서만 허용
+  - from:
+    - ipBlock:
+        cidr: 10.0.0.0/8
+    - ipBlock:
+        cidr: 172.16.0.0/12
+    - ipBlock:
+        cidr: 192.168.0.0/16
+    ports:
+    - protocol: TCP
+      port: 22
+  egress:
+  # Kubernetes API 서버 통신 허용
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+  # DNS 조회 허용
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # aiops 네임스페이스 통신 허용
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: aiops
+---
+
+# aiops 기본 네트워크 정책
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aiops-default-policy
+  namespace: aiops
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  # 같은 네임스페이스 내 통신 허용
+  - from:
+    - podSelector: {}
+  # infra(bastion)에서 접근 허용
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: infra
+---
+
+# ---------------------------------------------------------
+# 5. SSH 인증용 Secret (SSH 키 기반 인증)
+# ---------------------------------------------------------
+# 주의: 실제 사용 시 아래 명령으로 SSH 키를 생성하세요:
+#   ssh-keygen -t ed25519 -C "bastion-admin" -f bastion_key
+#   kubectl create secret generic bastion-ssh-keys -n infra \
+#     --from-file=authorized_keys=bastion_key.pub
+#
+# 아래는 플레이스홀더입니다. 반드시 실제 키로 교체하세요!
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bastion-ssh-keys
+  namespace: infra
+type: Opaque
+stringData:
+  # 여기에 실제 공개키를 넣으세요
+  authorized_keys: |
+    # REPLACE_WITH_YOUR_PUBLIC_KEY
+    # 예: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... bastion-admin
+---
+
+# ---------------------------------------------------------
+# 6. Bastion 초기화 스크립트 (보안 강화)
+# ---------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bastion-init-script
+  namespace: infra
+data:
+  setup.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    echo "[1/7] Installing packages..."
+    apt-get update && apt-get install -y --no-install-recommends \
+      openssh-server \
+      curl \
+      vim \
+      git \
+      less \
+      dnsutils \
+      iputils-ping \
+      tmux \
+      ca-certificates
+
+    # 불필요한 캐시 제거
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    echo "[2/7] Installing kubectl with verification..."
+    KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+    curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+    curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256"
+    echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check
+    chmod +x kubectl && mv kubectl /usr/local/bin/
+    rm kubectl.sha256
+
+    echo "[3/7] Installing Argo CLI with verification..."
+    ARGO_VERSION=$(curl -s https://api.github.com/repos/argoproj/argo-workflows/releases/latest | grep tag_name | cut -d '"' -f 4)
+    curl -sLO "https://github.com/argoproj/argo-workflows/releases/download/${ARGO_VERSION}/argo-linux-amd64.gz"
+    curl -sLO "https://github.com/argoproj/argo-workflows/releases/download/${ARGO_VERSION}/argo-workflows-${ARGO_VERSION}-checksums.txt"
+    # 체크섬 검증 (가능한 경우)
+    gunzip argo-linux-amd64.gz
+    chmod +x argo-linux-amd64
+    mv argo-linux-amd64 /usr/local/bin/argo
+
+    echo "[4/7] Configuring SSH server (hardened)..."
+    mkdir -p /run/sshd
+
+    # SSH 서버 보안 설정
+    cat > /etc/ssh/sshd_config.d/hardened.conf << 'SSHEOF'
+    # 인증 방식
+    PasswordAuthentication no
+    PermitEmptyPasswords no
+    PubkeyAuthentication yes
+    AuthenticationMethods publickey
+
+    # 접근 제한
+    PermitRootLogin no
+    MaxAuthTries 3
+    MaxSessions 5
+    LoginGraceTime 30
+
+    # 보안 강화
+    X11Forwarding no
+    AllowTcpForwarding yes
+    AllowAgentForwarding yes
+    PermitTunnel no
+
+    # 타임아웃 설정
+    ClientAliveInterval 300
+    ClientAliveCountMax 2
+
+    # 로깅
+    LogLevel VERBOSE
+    SSHEOF
+
+    echo "[5/7] Creating devops user..."
+    useradd -m -s /bin/bash -u 1000 devops
+
+    # SSH 키 설정
+    mkdir -p /home/devops/.ssh
+    chmod 700 /home/devops/.ssh
+    cp /ssh-keys/authorized_keys /home/devops/.ssh/authorized_keys
+    chmod 600 /home/devops/.ssh/authorized_keys
+    chown -R devops:devops /home/devops/.ssh
+
+    echo "[6/7] Configuring user environment..."
+    cat >> /home/devops/.bashrc << 'BASHEOF'
+
+    # Kubernetes 환경변수
+    export KUBERNETES_SERVICE_HOST="${KUBERNETES_SERVICE_HOST}"
+    export KUBERNETES_SERVICE_PORT="${KUBERNETES_SERVICE_PORT}"
+
+    # 기본 네임스페이스 설정 (aiops)
+    export ARGO_NAMESPACE=aiops
+
+    # kubectl alias (aiops 네임스페이스 기본)
+    alias k='kubectl -n aiops'
+    alias kall='kubectl get all -n aiops'
+    alias kpod='kubectl get pods -n aiops'
+    alias klogs='kubectl logs -n aiops'
+    alias kdesc='kubectl describe -n aiops'
+
+    # argo alias
+    alias argo='argo -n aiops'
+    alias argolist='argo list -n aiops'
+    alias argologs='argo logs -n aiops'
+
+    # kubectl 자동완성
+    source <(kubectl completion bash)
+    complete -o default -F __start_kubectl k
+
+    # 프롬프트 설정
+    export PS1='\[\033[01;32m\]\u@bastion\[\033[00m\](\[\033[01;33m\]aiops\[\033[00m\]):\[\033[01;34m\]\w\[\033[00m\]\$ '
+
+    # 보안 알림
+    echo "========================================"
+    echo " Bastion Server - aiops namespace admin"
+    echo " 권한 범위: aiops 네임스페이스 내 관리자"
+    echo " 클러스터 전체: 읽기 전용"
+    echo "========================================"
+    BASHEOF
+
+    # 환경변수 주입 (런타임)
+    sed -i "s/\${KUBERNETES_SERVICE_HOST}/${KUBERNETES_SERVICE_HOST}/g" /home/devops/.bashrc
+    sed -i "s/\${KUBERNETES_SERVICE_PORT}/${KUBERNETES_SERVICE_PORT}/g" /home/devops/.bashrc
+
+    echo "[7/7] Starting SSH server..."
+    exec /usr/sbin/sshd -D -e
+---
+
+# ---------------------------------------------------------
+# 7. Bastion Deployment (보안 강화)
+# ---------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bastion-server
+  namespace: infra
+  labels:
+    app: bastion-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bastion-server
+  template:
+    metadata:
+      labels:
+        app: bastion-server
+    spec:
+      serviceAccountName: bastion-sa
+
+      # 워커 노드에서 실행 (컨트롤 플레인 보호)
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: DoesNotExist
+
+      # Pod 보안 컨텍스트
+      securityContext:
+        runAsNonRoot: false  # SSH 서버 초기화에 root 필요
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+      - name: bastion
+        image: ubuntu:22.04@sha256:0e5e4a57c2499249aafc3b40fcd541e9a456aab7296681a3994d631587203f97
+        command: ["/bin/bash", "/scripts/setup.sh"]
+        ports:
+        - containerPort: 22
+          name: ssh
+          protocol: TCP
+
+        # 리소스 제한
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+        # 컨테이너 보안 컨텍스트
+        securityContext:
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - CHOWN
+            - SETUID
+            - SETGID
+            - NET_BIND_SERVICE
+
+        # 볼륨 마운트
+        volumeMounts:
+        - name: init-script
+          mountPath: /scripts
+          readOnly: true
+        - name: ssh-keys
+          mountPath: /ssh-keys
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        - name: run
+          mountPath: /run
+
+        # 헬스 체크
+        livenessProbe:
+          tcpSocket:
+            port: 22
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          tcpSocket:
+            port: 22
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+      volumes:
+      - name: init-script
+        configMap:
+          name: bastion-init-script
+          defaultMode: 0755
+      - name: ssh-keys
+        secret:
+          secretName: bastion-ssh-keys
+          defaultMode: 0400
+      - name: tmp
+        emptyDir: {}
+      - name: run
+        emptyDir: {}
+---
+
+# ---------------------------------------------------------
+# 8. Service (ClusterIP - 내부 접근만)
+# ---------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: bastion-svc
+  namespace: infra
+spec:
+  type: ClusterIP  # NodePort 대신 ClusterIP 사용
+  selector:
+    app: bastion-server
+  ports:
+  - port: 22
+    targetPort: 22
+    name: ssh
+---
+
+# ---------------------------------------------------------
+# 9. (선택) 외부 접근이 필요한 경우 LoadBalancer 사용
+# 클라우드 환경에서만 사용 가능
+# ---------------------------------------------------------
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: bastion-external
+#   namespace: infra
+#   annotations:
+#     # AWS의 경우: 특정 IP만 허용
+#     service.beta.kubernetes.io/aws-load-balancer-source-ranges: "YOUR_OFFICE_IP/32"
+# spec:
+#   type: LoadBalancer
+#   selector:
+#     app: bastion-server
+#   ports:
+#   - port: 22
+#     targetPort: 22
+---
+
+# ---------------------------------------------------------
+# 10. PodDisruptionBudget (가용성 보장)
+# ---------------------------------------------------------
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bastion-pdb
+  namespace: infra
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: bastion-server

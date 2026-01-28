@@ -1,0 +1,23 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gpu-storage-dynamic
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+    meta.helm.sh/release-name: nfs-gpu-provisioner
+    meta.helm.sh/release-namespace: default
+  labels:
+    app: nfs-subdir-external-provisioner
+    app.kubernetes.io/managed-by: Helm
+    chart: nfs-subdir-external-provisioner-4.0.18
+    heritage: Helm
+    release: nfs-gpu-provisioner
+provisioner: k8s-sigs.io/nfs-gpu-provisioner
+parameters:
+  archiveOnDelete: "true"
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+mountOptions:
+  - nfsvers=3
+  - nolock

@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-kubeflow-provisioner
+  namespace: kube-system
+  labels:
+    app: nfs-kubeflow-provisioner
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nfs-kubeflow-provisioner
+  template:
+    metadata:
+      labels:
+        app: nfs-kubeflow-provisioner
+    spec:
+      serviceAccountName: nfs-kubeflow-provisioner
+      containers:
+        - name: nfs-kubeflow-provisioner
+          image: registry.k8s.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2
+          volumeMounts:
+            - name: nfs-kubeflow-root
+              mountPath: /persistentvolumes
+          env:
+            - name: PROVISIONER_NAME
+              value: k8s-sigs.io/nfs-kubeflow-provisioner
+            - name: NFS_SERVER
+              value: 192.168.0.200
+            - name: NFS_PATH
+              value: /volume1/testfield/Kubeflow_storage
+      volumes:
+        - name: nfs-kubeflow-root
+          nfs:
+            server: 192.168.0.200
+            path: /volume1/testfield/Kubeflow_storage

@@ -48,7 +48,7 @@ helm repo update
 kubectl create namespace monitoring
 
 # values.yaml 생성 (Kubeflow 최적화)
-cat > ~/workspace/kubeflow/prometheus-values.yaml <<'EOF'
+cat > ~/workspace/kubeflow/prometheus-values.yaml <<EOF
 # Prometheus 설정
 prometheus:
   prometheusSpec:
@@ -205,6 +205,10 @@ kubectl get pods -n monitoring
 ```
 ### Step 3: NVIDIA DCGM Exporter 설치 (GPU 모니터링)
 > 목적: GPU 메트릭을 Prometheus가 수집할 수 있도록 노출
+> node 마다 라벨할당 필요
+```bash
+kubectl label no <node01 node02 node03> nvidia.com/gpu.present=true
+```
 ```yaml
 # DCGM (Data Center GPU Manager) Exporter란?
 # NVIDIA GPU의 세부 메트릭을 제공:
@@ -238,7 +242,7 @@ kubectl get pods -n monitoring
 ```
 ```bash
 # NVIDIA GPU Operator가 없다면 DCGM Exporter만 설치
-cat > ~/workspace/kubeflow/dcgm-exporter.yaml <<'EOF'
+cat > ~/workspace/kubeflow/dcgm-exporter.yaml <<EOF
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -350,7 +354,7 @@ kubectl get pods -n kube-system | grep dcgm
 # "누가 얼마나 GPU를 사용했는가?" 답변 가능
 ```
 ```bash
-cat > ~/workspace/kubeflow/kubeflow-servicemonitors.yaml <<'EOF'
+cat > ~/workspace/kubeflow/kubeflow-servicemonitors.yaml <<EOF
 # Kubeflow Notebooks 모니터링
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -435,7 +439,7 @@ kubectl apply -f ~/workspace/kubeflow/kubeflow-servicemonitors.yaml
 # Grafana 재시작 없이 즉시 사용 가능
 ```
 ```bash
-cat > ~/workspace/kubeflow/grafana-kubeflow-dashboard.yaml <<'EOF'
+cat > ~/workspace/kubeflow/grafana-kubeflow-dashboard.yaml <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -533,7 +537,7 @@ kubectl apply -f ~/workspace/kubeflow/grafana-kubeflow-dashboard.yaml
 # 방화벽 설정 필요 없음
 ```
 ```bash
-cat > ~/workspace/kubeflow/prometheus-rules.yaml <<'EOF'
+cat > ~/workspace/kubeflow/prometheus-rules.yaml <<EOF
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:

@@ -355,7 +355,6 @@ kubectl get pods -n kube-system | grep dcgm
 ```
 ```bash
 cat > ~/workspace/kubeflow/kubeflow-servicemonitors.yaml <<EOF
-# Kubeflow Notebooks 모니터링
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -373,16 +372,26 @@ spec:
   - port: http
     interval: 30s
     relabelings:
-    # 사용자 정보 추출
+    # 네임스페이스 이름
     - sourceLabels: [__meta_kubernetes_namespace]
-      regex: "kubeflow-(.+)"
-      targetLabel: kubeflow_user
-      replacement: "$1"
+      targetLabel: namespace
+    # 팀 레이블 (Profile의 team 레이블)
+    - sourceLabels: [__meta_kubernetes_namespace_label_team]
+      targetLabel: team
+    # 사용자 레이블 (Profile의 user 레이블)
+    - sourceLabels: [__meta_kubernetes_namespace_label_user]
+      targetLabel: user
+    # 사용자 타입 (individual/shared)
+    - sourceLabels: [__meta_kubernetes_namespace_label_user_type]
+      targetLabel: user_type
+    # Notebook 이름
     - sourceLabels: [__meta_kubernetes_pod_label_notebook_name]
       targetLabel: notebook_name
+    # Profile owner (이메일)
+    - sourceLabels: [__meta_kubernetes_namespace_annotation_owner]
+      targetLabel: owner
 
 ---
-# Kubeflow Pipelines 모니터링
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -439,7 +448,7 @@ kubectl apply -f ~/workspace/kubeflow/kubeflow-servicemonitors.yaml
 # Grafana 재시작 없이 즉시 사용 가능
 ```
 ```bash
-cat > ~/workspace/kubeflow/grafana-kubeflow-dashboard.yaml <<EOF
+cat > ~/workspace/kubeflow/grafana-kubeflow-dashboard.yaml <<'EOF'
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -450,57 +459,66 @@ metadata:
 data:
   kubeflow-resources.json: |
     {
-      "dashboard": {
-        "title": "Kubeflow Resource Usage by User/Team",
-        "tags": ["kubeflow", "gpu", "resources"],
-        "timezone": "browser",
-        "panels": [
-          {
-            "title": "GPU Usage by Profile",
-            "type": "graph",
-            "targets": [
-              {
-                "expr": "sum(DCGM_FI_DEV_GPU_UTIL) by (namespace, pod)",
-                "legendFormat": "{{namespace}} - {{pod}}"
-              }
-            ]
-          },
-          {
-            "title": "CPU Usage by Profile",
-            "type": "graph",
-            "targets": [
-              {
-                "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"kubeflow.*\"}[5m])) by (namespace)",
-                "legendFormat": "{{namespace}}"
-              }
-            ]
-          },
-          {
-            "title": "Memory Usage by Profile",
-            "type": "graph",
-            "targets": [
-              {
-                "expr": "sum(container_memory_usage_bytes{namespace=~\"kubeflow.*\"}) by (namespace)",
-                "legendFormat": "{{namespace}}"
-              }
-            ]
-          },
-          {
-            "title": "PVC Usage by Profile",
-            "type": "table",
-            "targets": [
-              {
-                "expr": "kubelet_volume_stats_used_bytes{namespace=~\"kubeflow.*\"}",
-                "format": "table"
-              }
-            ]
-          }
-        ]
-      }
+      "title": "Kubeflow Resources by Team",
+      "panels": [
+        {
+          "id": 1,
+          "title": "GPU Usage by Team",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum(DCGM_FI_DEV_GPU_UTIL{team!=\"\"}) by (team)",
+              "legendFormat": "{{team}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "title": "CPU Usage by Team",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum(rate(container_cpu_usage_seconds_total{team!=\"\"}[5m])) by (team)",
+              "legendFormat": "{{team}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+        },
+        {
+          "id": 3,
+          "title": "Memory Usage by Team",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum(container_memory_usage_bytes{team!=\"\"}) by (team)",
+              "legendFormat": "{{team}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+        }
+      ],
+      "schemaVersion": 16,
+      "version": 0
     }
 EOF
 
 kubectl apply -f ~/workspace/kubeflow/grafana-kubeflow-dashboard.yaml
+```
+### 팀/사용자 구분 표시
+```promql
+# 팀별 CPU 사용량
+sum(rate(container_cpu_usage_seconds_total{team!=""}[5m])) by (team)
+
+# 개인 사용자별 CPU 사용량
+sum(rate(container_cpu_usage_seconds_total{user!="", user_type="individual"}[5m])) by (user)
+```
+
+### 3. **대시보드 변수 (필터링)**
+```
+템플릿 변수:
+- Team 선택: aiops, aidev
+- User 선택: john, jane (선택된 팀의 사용자만 표시)
 ```
 ### Step 6: PrometheusRule 생성 (알림 규칙)
 > 목적: 문제 상황을 자동으로 감지하고 알림

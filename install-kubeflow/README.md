@@ -5,7 +5,8 @@
 2. Kustomize - 커스터마이징이 용이
 3. Kubeflow Operator - 운영 관리 편의성
 
-## 권장 설치 방법: Kubeflow Manifests (v1.9.0)
+## 권장 설치 방법: Kubeflow Manifests (v1.10.0)
+> 주의: Kubeflow v1.10.0의 Volumes Web App 버그 있음
 > KServe와 Spark Operator의 불안정성을 고려하여 단계별 설치를 권장합니다.
 
 ## 설치 절차
@@ -17,31 +18,44 @@ helm repo add nfs-subdir-external-provisioner \
   https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
 helm repo update
 
-# Kubeflow용 provisioner 설치
+# Kubeflow 사용자용 provisioner 설치
+helm install nfs-gpu-provisioner \
+  nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+  --namespace kube-system \
+  --set nfs.server=192.168.0.200 \
+  --set nfs.path=/volume1/testfield/GPU_storage \
+  --set storageClass.name=gpu-storage \
+  --set storageClass.reclaimPolicy=Retain \
+  --set storageClass.defaultClass=false \
+  --set storageClass.archiveOnDelete=true \
+  --set storageClass.provisionerName=k8s-sigs.io/nfs-gpu-provisioner \
+  --set storageClass.allowVolumeExpansion=true
+
+# Kubeflow 시스템용 provisioner 설치
 helm install nfs-kubeflow-provisioner \
   nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
   --namespace kube-system \
-  --create-namespace \
   --set nfs.server=192.168.0.200 \
   --set nfs.path=/volume1/testfield/Kubeflow_storage \
   --set storageClass.name=kubeflow-storage \
+  --set storageClass.reclaimPolicy=Retain \
   --set storageClass.defaultClass=true \
   --set storageClass.archiveOnDelete=true \
-  --set storageClass.reclaimPolicy=Retain \
+  --set storageClass.provisionerName=k8s-sigs.io/nfs-kubeflow-provisioner \
   --set storageClass.allowVolumeExpansion=true
 
 # kubeflow-storage의 default 
 kubectl patch storageclass kubeflow-storage \
     -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 ```
-### 참고: Kubeflow 설치 완료 후, gpu-storage-dynamic 으로 default 복원
+### 참고: Kubeflow 설치 완료 후, gpu-storage 으로 default 복원
 ```bash
 # kubeflow-storage의 default 
 kubectl patch storageclass kubeflow-storage \
     -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
 
-# gpu-storage-dynamic을 default로 복원
-kubectl patch storageclass gpu-storage-dynamic \
+# gpu-storage을 default로 복원
+kubectl patch storageclass gpu-storage \
     -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 ```
 
@@ -52,18 +66,24 @@ cd ~/workspace/kubeflow
 mkdir -p kubeflow-manifests
 cd kubeflow-manifests
 
-# Kubeflow manifests 다운로드 (v1.9.0)
+# Kubeflow manifests 다운로드 (v1.10.0)
 git clone https://github.com/kubeflow/manifests.git
 cd manifests
-git checkout v1.9.0
+git checkout v1.10.0
 
 # 또는 최신 stable 버전
-# git checkout v1.9.1
+# git checkout v1.10.1
 ```
+### 한방설치법
+```bash
+# 전체 설치 (가장 확실한 방법)
+while ! kustomize build example | kubectl apply -f -; do echo "Retrying to apply resources"; sleep 10; done
+```
+
 ### Step 2: Cert-Manager 설치
 ```bash
 # Cert-manager 설치
-kustomize build common/cert-manager/cert-manager/base | kubectl apply -f -
+kustomize build common/cert-manager/base | kubectl apply -f -
 
 # Cert-manager webhook 준비 대기 (중요!)
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cert-manager -n cert-manager --timeout=300s
@@ -75,9 +95,9 @@ kubectl get pods -n cert-manager
 ### Step 3: Istio 설치
 ```bash
 # Istio 설치
-kustomize build common/istio-1-22/istio-crds/base | kubectl apply -f -
-kustomize build common/istio-1-22/istio-namespace/base | kubectl apply -f -
-kustomize build common/istio-1-22/istio-install/overlays/oauth2-proxy | kubectl apply -f -
+kustomize build common/istio-1-24/istio-crds/base | kubectl apply -f -
+kustomize build common/istio-1-24/istio-namespace/base | kubectl apply -f -
+kustomize build common/istio-1-24/istio-install/overlays/oauth2-proxy | kubectl apply -f -
 
 # Istio 준비 대기
 kubectl wait --for=condition=ready pod -l app=istiod -n istio-system --timeout=300s
@@ -182,6 +202,8 @@ kubectl get pods -n kserve
 # KServe 제거
 kustomize build contrib/kserve/kserve | kubectl delete -f -
 kustomize build contrib/kserve/models-web-app/overlays/kubeflow | kubectl delete -f -
+
+kustomize build common/knative/knative-serving/base | kubectl apply -f -
 ```
 ### Step 12: Katib (AutoML)
 ```bash
@@ -287,7 +309,7 @@ kubectl apply -f - <<EOF
 apiVersion: kubeflow.org/v1
 kind: Profile
 metadata:
-  name: kubeflow-user-example-com
+  name: dwnkim
 spec:
   owner:
     kind: User

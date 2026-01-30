@@ -484,7 +484,7 @@ data:
           "type": "timeseries",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
           "targets": [{
-            "expr": "avg by (namespace) (DCGM_FI_DEV_GPU_UTIL{namespace=~\"dwnkim|aiops|aidev\"})",
+            "expr": "avg by (namespace) (DCGM_FI_DEV_GPU_UTIL{namespace=~\"dwnkim|aiops|argo\"})",
             "legendFormat": "{{namespace}}"
           }]
         },
@@ -494,7 +494,7 @@ data:
           "type": "timeseries",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
           "targets": [{
-            "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"dwnkim|aiops|aidev\", container!=\"POD\"}[5m]))",
+            "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"dwnkim|aiops|argo\", container!=\"POD\"}[5m]))",
             "legendFormat": "{{namespace}}"
           }]
         },
@@ -504,7 +504,7 @@ data:
           "type": "timeseries",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
           "targets": [{
-            "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"dwnkim|aiops|aidev\", container!=\"POD\"})",
+            "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"dwnkim|aiops|argo\", container!=\"POD\"})",
             "legendFormat": "{{namespace}}"
           }],
           "fieldConfig": {
@@ -519,7 +519,7 @@ data:
           "type": "table",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
           "targets": [{
-            "expr": "sum by (namespace, owner) (container_memory_working_set_bytes{namespace=~\"dwnkim|aiops|aidev\", container!=\"POD\"})",
+            "expr": "sum by (namespace, owner) (container_memory_working_set_bytes{namespace=~\"dwnkim|aiops|argo\", container!=\"POD\"})",
             "format": "table",
             "instant": true
           }]

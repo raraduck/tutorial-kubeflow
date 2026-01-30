@@ -2,80 +2,116 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: datacomp-download-
-  namespace: aiops
+  namespace: dwnkim
+  labels:
+    workflows.argoproj.io/archive-strategy: "false"
 spec:
   entrypoint: datacomp-distributed-download
-  # 동시에 실행할 파드 수 (병렬 처리 수준)
-  parallelism: 5
+  serviceAccountName: default-editor
   
-  # [핵심 수정] PVC 대신 HostPath 볼륨 사용
+  parallelism: 4
+  
+  nodeSelector:
+    kubernetes.io/hostname: gn150
+  
+  # [핵심] Argo의 init/wait 컨테이너에 리소스 명시
+  # podSpecPatch를 올바르게 사용 (JSON Patch 형식)
+  podSpecPatch: |
+    initContainers:
+    - name: init
+      resources:
+        requests:
+          cpu: 100m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+    containers:
+    - name: wait
+      resources:
+        requests:
+          cpu: 100m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+  
   volumes:
-  - name: workdir
+  - name: metadata-storage
     hostPath:
-      # 호스트(노드)의 실제 경로
-      path: /mnt/GPU_storage/datasets/datacomp-medium
+      path: /data1/datacomp-medium/metadata
+      type: Directory
+  - name: output-storage
+    hostPath:
+      path: /data2
       type: Directory
 
   templates:
   - name: datacomp-distributed-download
     steps:
-    # 1단계: Parquet 파일 목록 읽기
     - - name: generate-list
         template: list-parquet-files
-        arguments:
-          parameters:
-          - name: metadata-path
-            # 컨테이너 내부는 /data 에 마운트되므로 경로는 아래와 같음
-            value: "/data/metadata"
 
-    # 2단계: 병렬 다운로드 수행
     - - name: download-worker
         template: img2dataset-worker
         arguments:
           parameters:
           - name: parquet-file
             value: "{{item}}"
-          - name: base-output-path
-            value: "/data/images"
         withParam: "{{steps.generate-list.outputs.parameters.file-list}}"
 
   # ---------------------------------------------------------
   # Template 1: 파일 리스트 생성기
   # ---------------------------------------------------------
   - name: list-parquet-files
-    inputs:
-      parameters:
-      - name: metadata-path
-    script:
+    container:
       image: python:3.10-slim
-      command: [python]
-      source: |
+      command: ["/bin/bash", "-c"]
+      args:
+      - |
+        python3 << 'EOF'
         import os
         import json
         import glob
         
-        path = "{{inputs.parameters.metadata-path}}"
+        search_path = "/input_meta"
+        output_file = "/tmp/output.json"
         
-        # 경로 확인 (디버깅용)
-        if not os.path.exists(path):
-            print(f"ERROR: Path {path} not found inside container.")
+        if not os.path.exists(search_path):
+            print(f"ERROR: Path {search_path} not found.")
             exit(1)
 
-        files = glob.glob(os.path.join(path, "*.parquet"))
+        files = glob.glob(os.path.join(search_path, "**", "*.parquet"), recursive=True)
         files.sort()
         
-        # Argo는 표준출력(stdout)을 캡처합니다
-        print(json.dumps(files))
+        if not files:
+            print(f"ERROR: No .parquet files found in {search_path}")
+            exit(1)
+        
+        print(f"Found {len(files)} parquet files")
+        
+        with open(output_file, 'w') as f:
+            json.dump(files, f)
+        EOF
+      
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: 1
+          memory: 2Gi
+      
       volumeMounts:
-      - name: workdir
-        mountPath: /data # HostPath가 컨테이너 내부 /data 에 연결됨
+      - name: metadata-storage
+        mountPath: /input_meta
+        readOnly: true
 
     outputs:
       parameters:
       - name: file-list
         valueFrom:
-          default: "[]"
-          path: /tmp/output_list
+          path: /tmp/output.json
 
   # ---------------------------------------------------------
   # Template 2: 다운로드 워커
@@ -84,23 +120,38 @@ spec:
     inputs:
       parameters:
       - name: parquet-file
-      - name: base-output-path
+    
     retryStrategy:
       limit: 2
+    
+    activeDeadlineSeconds: 21600
+    
     container:
       image: python:3.10
       command: ["/bin/bash", "-c"]
       args:
       - |
-        pip install img2dataset pyarrow pandas
+        AVAILABLE_KB=$(df -P /output_data | awk 'NR==2 {print $4}')
+        LIMIT_KB=104857600
+        
+        if [ "$AVAILABLE_KB" -lt "$LIMIT_KB" ]; then
+            echo "🚨 [Emergency Stop] Disk space is extremely low (<100GB)."
+            echo "Available: $(($AVAILABLE_KB / 1024 / 1024)) GB"
+            exit 1
+        else
+            echo "✅ Disk check passed. Available: $(($AVAILABLE_KB / 1024 / 1024)) GB"
+        fi
+
+        echo "=== Installing dependencies ==="
+        pip install --no-cache-dir img2dataset pyarrow pandas
         
         INPUT_FILE="{{inputs.parameters.parquet-file}}"
         FILENAME=$(basename "$INPUT_FILE" .parquet)
-        OUTPUT_DIR="{{inputs.parameters.base-output-path}}/$FILENAME"
+        OUTPUT_DIR="/output_data/$FILENAME"
         
         echo "Processing: $INPUT_FILE"
+        echo "Output to: $OUTPUT_DIR"
         
-        # [수정됨] 용량 최적화 옵션 적용
         img2dataset \
           --url_list "$INPUT_FILE" \
           --input_format "parquet" \
@@ -108,14 +159,17 @@ spec:
           --caption_col "text" \
           --output_format webdataset \
           --output_folder "$OUTPUT_DIR" \
-          --processes_count 4 \
+          --processes_count 2 \
           --thread_count 32 \
           --image_size 224 \
           --resize_mode center_crop \
           --encode_format webp \
-          --encode_quality 90 \
+          --encode_quality 75 \
           --retries 1 \
-          --min_image_size 200
+          --min_image_size 200 \
+          --enable_wandb False
+        
+        echo "✅ Completed: $FILENAME"
       
       resources:
         requests:
@@ -126,5 +180,9 @@ spec:
           memory: 8Gi
       
       volumeMounts:
-      - name: workdir
-        mountPath: /data
+      - name: metadata-storage
+        mountPath: /input_meta
+        readOnly: true
+      - name: output-storage
+        mountPath: /output_data
+        readOnly: false

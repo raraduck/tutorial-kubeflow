@@ -64,7 +64,7 @@ kubectl edit ConfigMap dex -n auth
     - email: dwnkim@neurophet.com
       hashFromEnv: DEX_USER_PASSWORD # DEX_DWNKIM_PASSWORD
       username: dwnkim
-      userID: "01033318498"
+      userID: "010----8498"
     
     - email: minho.lee@neurophet.com
       hashFromEnv: DEX_USER_PASSWORD # DEX_MINHO_PASSWORD 

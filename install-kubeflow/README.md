@@ -276,6 +276,11 @@ kustomize build apps/training-operator/upstream/overlays/kubeflow | kubectl appl
 # 확인
 kubectl get pods -n kubeflow | grep training-operator
 ```
+#### 문제발생시: Kubeflow 버전을 고려하여 Training Operator v1.7 (Stable) 기준 CRD를 설치
+```bash
+# 1. PyTorchJob CRD 설치 (필수)
+kubectl apply -f https://raw.githubusercontent.com/kubeflow/training-operator/v1.7.0/manifests/base/crds/kubeflow.org_pytorchjobs.yaml
+```
 ### Step 21: Spark Operator (선택적 - 문제 발생 시 스킵)
 ```bash
 # Spark Operator

@@ -1,0 +1,140 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: datacomp-download-safe-
+  namespace: dwnkim
+  labels:
+    workflows.argoproj.io/archive-strategy: "false"
+spec:
+  entrypoint: datacomp-single-node-download
+  serviceAccountName: default-editor
+  
+  # HDD 부하 및 용량 체크를 위해 너무 빠르지 않게 설정
+  parallelism: 4
+  
+  nodeSelector:
+    kubernetes.io/hostname: gn150
+
+  volumes:
+  - name: metadata-storage
+    hostPath:
+      path: /data1/datacomp-medium/metadata
+      type: Directory
+  - name: output-storage
+    hostPath:
+      path: /data2
+      type: Directory
+
+  templates:
+  - name: datacomp-single-node-download
+    steps:
+    - - name: generate-list
+        template: list-parquet-files
+    - - name: download-worker
+        template: img2dataset-worker
+        arguments:
+          parameters:
+          - name: parquet-file
+            value: "{{item}}"
+        withParam: "{{steps.generate-list.outputs.parameters.file-list}}"
+
+  # ---------------------------------------------------------
+  # Template 1: 파일 리스트 생성기
+  # ---------------------------------------------------------
+  - name: list-parquet-files
+    script:
+      image: python:3.10-slim
+      command: [python]
+      source: |
+        import os
+        import json
+        import glob
+        
+        search_path = "/input_meta"
+        
+        if not os.path.exists(search_path):
+            print(f"Error: Path {search_path} not found.")
+            exit(1)
+
+        files = glob.glob(os.path.join(search_path, "**", "*.parquet"), recursive=True)
+        files.sort()
+        
+        if not files:
+            print(f"Error: No .parquet files found.")
+            exit(1)
+        
+        print(json.dumps(files))
+      volumeMounts:
+      - name: metadata-storage
+        mountPath: /input_meta
+        readOnly: true
+
+  # ---------------------------------------------------------
+  # Template 2: 다운로드 워커 (안전장치 추가됨)
+  # ---------------------------------------------------------
+  - name: img2dataset-worker
+    inputs:
+      parameters:
+      - name: parquet-file
+    retryStrategy:
+      limit: 2
+    container:
+      image: python:3.10
+      command: ["/bin/bash", "-c"]
+      args:
+      - |
+        # [안전장치 1] 디스크 용량 체크 (100GB 미만이면 종료)
+        # 컨테이너 내부에서 /output_data는 호스트의 /data2와 연결되어 있음
+        AVAILABLE_KB=$(df -P /output_data | awk 'NR==2 {print $4}')
+        # 100GB = 104857600 KB
+        LIMIT_KB=104857600
+        
+        if [ "$AVAILABLE_KB" -lt "$LIMIT_KB" ]; then
+            echo "🚨 [Emergency Stop] Disk space is extremely low (<100GB). Stopping download."
+            exit 1
+        else
+            echo "✅ Disk check passed. Available space: $(($AVAILABLE_KB / 1024 / 1024)) GB"
+        fi
+
+        echo "=== Installing dependencies ==="
+        pip install img2dataset pyarrow pandas
+        
+        INPUT_FILE="{{inputs.parameters.parquet-file}}"
+        FILENAME=$(basename "$INPUT_FILE" .parquet)
+        OUTPUT_DIR="/output_data/$FILENAME"
+        
+        echo "Processing: $INPUT_FILE"
+        
+        # [안전장치 2] encode_quality를 90 -> 75로 변경
+        img2dataset \
+          --url_list "$INPUT_FILE" \
+          --input_format "parquet" \
+          --url_col "url" \
+          --caption_col "text" \
+          --output_format webdataset \
+          --output_folder "$OUTPUT_DIR" \
+          --processes_count 2 \
+          --thread_count 32 \
+          --image_size 224 \
+          --resize_mode center_crop \
+          --encode_format webp \
+          --encode_quality 75 \
+          --retries 1 \
+          --min_image_size 200 \
+          --enable_wandb False 
+      
+      resources:
+        requests:
+          cpu: 2
+          memory: 4Gi
+        limits:
+          cpu: 4
+          memory: 8Gi
+      
+      volumeMounts:
+      - name: metadata-storage
+        mountPath: /input_meta
+        readOnly: true
+      - name: output-storage
+        mountPath: /output_data
+        readOnly: false

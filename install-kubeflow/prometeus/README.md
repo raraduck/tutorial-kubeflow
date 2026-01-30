@@ -366,30 +366,37 @@ spec:
   namespaceSelector:
     any: true
   selector:
-    matchLabels:
-      notebook-name: ""
+    matchExpressions:
+    - key: notebook-name
+      operator: Exists
   endpoints:
   - port: http
     interval: 30s
+    path: /metrics
     relabelings:
-    # 네임스페이스 이름
+    # 네임스페이스 이름 (항상 존재)
     - sourceLabels: [__meta_kubernetes_namespace]
       targetLabel: namespace
-    # 팀 레이블 (Profile의 team 레이블)
-    - sourceLabels: [__meta_kubernetes_namespace_label_team]
-      targetLabel: team
-    # 사용자 레이블 (Profile의 user 레이블)
-    - sourceLabels: [__meta_kubernetes_namespace_label_user]
-      targetLabel: user
-    # 사용자 타입 (individual/shared)
-    - sourceLabels: [__meta_kubernetes_namespace_label_user_type]
-      targetLabel: user_type
-    # Notebook 이름
+    
+    # Notebook 이름 (항상 존재)
     - sourceLabels: [__meta_kubernetes_pod_label_notebook_name]
       targetLabel: notebook_name
-    # Profile owner (이메일)
+    
+    # Pod 이름 (항상 존재)
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    
+    # Owner annotation (Profile에서 자동 생성됨)
     - sourceLabels: [__meta_kubernetes_namespace_annotation_owner]
       targetLabel: owner
+    
+    # Pod IP
+    - sourceLabels: [__meta_kubernetes_pod_ip]
+      targetLabel: pod_ip
+    
+    # Node 이름
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
 
 ---
 apiVersion: monitoring.coreos.com/v1
@@ -409,6 +416,7 @@ spec:
   endpoints:
   - port: http
     interval: 30s
+    path: /metrics
 EOF
 
 kubectl apply -f ~/workspace/kubeflow/kubeflow-servicemonitors.yaml
@@ -452,54 +460,71 @@ cat > ~/workspace/kubeflow/grafana-kubeflow-dashboard.yaml <<'EOF'
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kubeflow-resource-dashboard
+  name: kubeflow-namespace-dashboard
   namespace: monitoring
   labels:
     grafana_dashboard: "1"
 data:
-  kubeflow-resources.json: |
+  kubeflow-namespace.json: |
     {
-      "title": "Kubeflow Resources by Team",
+      "title": "Kubeflow Resources by Namespace",
+      "uid": "kubeflow-namespace",
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "version": 0,
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
       "panels": [
         {
           "id": 1,
-          "title": "GPU Usage by Team",
-          "type": "graph",
-          "targets": [
-            {
-              "expr": "sum(DCGM_FI_DEV_GPU_UTIL{team!=\"\"}) by (team)",
-              "legendFormat": "{{team}}"
-            }
-          ],
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          "title": "GPU Usage by Namespace",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "targets": [{
+            "expr": "avg by (namespace) (DCGM_FI_DEV_GPU_UTIL{namespace=~\"dwnkim|aiops|aidev\"})",
+            "legendFormat": "{{namespace}}"
+          }]
         },
         {
           "id": 2,
-          "title": "CPU Usage by Team",
-          "type": "graph",
-          "targets": [
-            {
-              "expr": "sum(rate(container_cpu_usage_seconds_total{team!=\"\"}[5m])) by (team)",
-              "legendFormat": "{{team}}"
-            }
-          ],
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          "title": "CPU Usage by Namespace",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "targets": [{
+            "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"dwnkim|aiops|aidev\", container!=\"POD\"}[5m]))",
+            "legendFormat": "{{namespace}}"
+          }]
         },
         {
           "id": 3,
-          "title": "Memory Usage by Team",
-          "type": "graph",
-          "targets": [
-            {
-              "expr": "sum(container_memory_usage_bytes{team!=\"\"}) by (team)",
-              "legendFormat": "{{team}}"
+          "title": "Memory Usage by Namespace",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "targets": [{
+            "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"dwnkim|aiops|aidev\", container!=\"POD\"})",
+            "legendFormat": "{{namespace}}"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
             }
-          ],
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          }
+        },
+        {
+          "id": 4,
+          "title": "Namespace Summary",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "targets": [{
+            "expr": "sum by (namespace, owner) (container_memory_working_set_bytes{namespace=~\"dwnkim|aiops|aidev\", container!=\"POD\"})",
+            "format": "table",
+            "instant": true
+          }]
         }
-      ],
-      "schemaVersion": 16,
-      "version": 0
+      ]
     }
 EOF
 
@@ -514,98 +539,6 @@ sum(rate(container_cpu_usage_seconds_total{team!=""}[5m])) by (team)
 sum(rate(container_cpu_usage_seconds_total{user!="", user_type="individual"}[5m])) by (user)
 ```
 
-### 3. **대시보드 변수 (필터링)**
-```
-템플릿 변수:
-- Team 선택: aiops, aidev
-- User 선택: john, jane (선택된 팀의 사용자만 표시)
-```
-### Step 6: PrometheusRule 생성 (알림 규칙)
-> 목적: 문제 상황을 자동으로 감지하고 알림
-```yaml
-# Alert 1: HighGPUUtilization
-# yamlexpr: DCGM_FI_DEV_GPU_UTIL > 95
-# for: 10m
-# 의미:
-
-# GPU 사용률이 95% 이상
-# 10분 이상 지속
-# → 경고 발생
-
-# 활용:
-
-# GPU가 과부하 상태임을 알림
-# 더 많은 GPU가 필요한지 판단
-
-# Alert 2: NamespaceQuotaExceeded
-# yamlexpr: |
-#   kube_resourcequota{type="used"} / 
-#   kube_resourcequota{type="hard"} > 0.9
-# 의미:
-
-# ResourceQuota의 90% 사용
-# → 곧 할당량 초과 예상
-
-# 활용:
-
-# 사용자가 리소스 한계에 도달하기 전 경고
-# Quota 조정 필요 여부 판단
-# Alert 3: NotebookIdleTooLong
-# 클러스터 외부에서 직접 접속
-# 방화벽 설정 필요 없음
-```
-```bash
-cat > ~/workspace/kubeflow/prometheus-rules.yaml <<EOF
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: kubeflow-alerts
-  namespace: monitoring
-  labels:
-    prometheus: kube-prometheus
-spec:
-  groups:
-  - name: kubeflow.rules
-    interval: 30s
-    rules:
-    # GPU 사용률 알림
-    - alert: HighGPUUtilization
-      expr: DCGM_FI_DEV_GPU_UTIL > 95
-      for: 10m
-      labels:
-        severity: warning
-      annotations:
-        summary: "GPU utilization is very high"
-        description: "GPU {{ $labels.gpu }} on {{ $labels.instance }} has been >95% for 10 minutes"
-    
-    # ResourceQuota 초과 경고
-    - alert: NamespaceQuotaExceeded
-      expr: |
-        kube_resourcequota{type="used"} / 
-        kube_resourcequota{type="hard"} > 0.9
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Namespace {{ $labels.namespace }} approaching quota limit"
-        description: "{{ $labels.resource }} usage is at {{ $value }}% of quota"
-    
-    # Notebook 장시간 유휴
-    - alert: NotebookIdleTooLong
-      expr: |
-        (time() - kube_pod_created{namespace=~"kubeflow.*", pod=~".*notebook.*"}) > 86400
-        and
-        rate(container_cpu_usage_seconds_total{namespace=~"kubeflow.*", pod=~".*notebook.*"}[1h]) < 0.1
-      for: 1h
-      labels:
-        severity: info
-      annotations:
-        summary: "Notebook {{ $labels.pod }} has been idle"
-        description: "Notebook in {{ $labels.namespace }} has low CPU usage for >1 day"
-EOF
-
-kubectl apply -f ~/workspace/kubeflow/prometheus-rules.yaml
-```
 ### Step 7: 접근 및 확인
 ```bash
 # Grafana 접속 정보

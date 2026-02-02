@@ -250,6 +250,7 @@ metadata:
   namespace: kube-system
   labels:
     app: dcgm-exporter
+    release: kube-prometheus-stack
 spec:
   selector:
     matchLabels:
@@ -289,6 +290,7 @@ metadata:
   namespace: kube-system
   labels:
     app: dcgm-exporter
+    release: kube-prometheus-stack
 spec:
   type: ClusterIP
   ports:
@@ -305,6 +307,7 @@ metadata:
   namespace: kube-system
   labels:
     app: dcgm-exporter
+    release: kube-prometheus-stack
 spec:
   selector:
     matchLabels:
@@ -312,12 +315,24 @@ spec:
   endpoints:
   - port: metrics
     interval: 30s
+    relabelings:
+    # 노드 이름을 node 라벨로 추가 (DCGM이 제공하는 Hostname 라벨은 유지)
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+    # DCGM Exporter Pod 이름 (디버깅용)
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: exporter_pod
 EOF
 
 kubectl apply -f ~/workspace/kubeflow/dcgm-exporter.yaml
 
 # 확인
 kubectl get pods -n kube-system | grep dcgm
+
+#  DCGM ServiceMonitor에 release: kube-prometheus-stack 라벨을 추가하여 Prometheus가 "이건 내가 관리해야 할 ServiceMonitor구나"라고 인식
+kubectl patch servicemonitor dcgm-exporter -n kube-system \
+  --type merge \
+  -p '{"metadata":{"labels":{"release":"kube-prometheus-stack"}}}'
 ```
 ### Step 4: Kubeflow 사용자별 메트릭 수집을 위한 ServiceMonitor
 > 목적: Kubeflow의 Notebook/Pipeline을 사용자별로 추적
@@ -423,38 +438,6 @@ kubectl apply -f ~/workspace/kubeflow/kubeflow-servicemonitors.yaml
 ```
 ### Step 5: 커스텀 Grafana 대시보드 생성
 > 목적: Kubeflow 전용 모니터링 대시보드 제공
-```yaml
-# 대시보드 구성:
-# Panel 1: GPU Usage by Profile
-# json"expr": "sum(DCGM_FI_DEV_GPU_UTIL) by (namespace, pod)"
-
-# 각 Profile(사용자)의 GPU 사용률을 시계열 그래프로 표시
-# 어느 사용자가 GPU를 많이 쓰는지 한눈에 확인
-
-# Panel 2: CPU Usage by Profile
-# json"expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"kubeflow.*\"}[5m])) by (namespace)"
-
-# Profile별 CPU 사용량 (cores 단위)
-# 5분 평균 사용률
-
-# Panel 3: Memory Usage by Profile
-# json"expr": "sum(container_memory_usage_bytes{namespace=~\"kubeflow.*\"}) by (namespace)"
-
-# Profile별 메모리 사용량 (bytes → GB 자동 변환)
-
-# Panel 4: PVC Usage by Profile
-# json"expr": "kubelet_volume_stats_used_bytes{namespace=~\"kubeflow.*\"}"
-
-# 각 사용자의 스토리지 사용량
-# PVC별 용량/사용량 테이블
-
-# ConfigMap으로 배포:
-# yamllabels:
-#   grafana_dashboard: "1"
-
-# 이 레이블이 있으면 Grafana가 자동으로 대시보드 로드
-# Grafana 재시작 없이 즉시 사용 가능
-```
 ```bash
 cat > ~/workspace/kubeflow/grafana-kubeflow-dashboard.yaml <<'EOF'
 apiVersion: v1
@@ -467,7 +450,7 @@ metadata:
 data:
   kubeflow-namespace.json: |
     {
-      "title": "Kubeflow Resources by Namespace",
+      "title": "Kubeflow Resources by Node and Namespace",
       "uid": "kubeflow-namespace",
       "timezone": "browser",
       "schemaVersion": 38,
@@ -480,13 +463,22 @@ data:
       "panels": [
         {
           "id": 1,
-          "title": "GPU Usage by Namespace",
+          "title": "GPU Usage by Node",
           "type": "timeseries",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
           "targets": [{
-            "expr": "avg by (namespace) (DCGM_FI_DEV_GPU_UTIL{namespace=~\"dwnkim|aiops|argo\"})",
-            "legendFormat": "{{namespace}}"
-          }]
+            "expr": "avg by (Hostname) (DCGM_FI_DEV_GPU_UTIL)",
+            "legendFormat": "{{Hostname}}",
+            "refId": "A"
+          }],
+          "description": "GPU utilization by node\ngn137: aiops team\ngn143: dwnkim\ngn150: argo workflows",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100
+            }
+          }
         },
         {
           "id": 2,
@@ -495,8 +487,14 @@ data:
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
           "targets": [{
             "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"dwnkim|aiops|argo\", container!=\"POD\"}[5m]))",
-            "legendFormat": "{{namespace}}"
-          }]
+            "legendFormat": "{{namespace}}",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "cores"
+            }
+          }
         },
         {
           "id": 3,
@@ -505,7 +503,8 @@ data:
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
           "targets": [{
             "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"dwnkim|aiops|argo\", container!=\"POD\"})",
-            "legendFormat": "{{namespace}}"
+            "legendFormat": "{{namespace}}",
+            "refId": "A"
           }],
           "fieldConfig": {
             "defaults": {
@@ -515,28 +514,126 @@ data:
         },
         {
           "id": 4,
-          "title": "Namespace Summary",
+          "title": "GPU Details by Node",
           "type": "table",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
           "targets": [{
-            "expr": "sum by (namespace, owner) (container_memory_working_set_bytes{namespace=~\"dwnkim|aiops|argo\", container!=\"POD\"})",
+            "expr": "DCGM_FI_DEV_GPU_UTIL",
             "format": "table",
-            "instant": true
+            "instant": true,
+            "refId": "A"
+          }],
+          "transformations": [{
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true,
+                "job": true,
+                "instance": true,
+                "UUID": true,
+                "device": true
+              },
+              "indexByName": {
+                "Hostname": 0,
+                "gpu": 1,
+                "modelName": 2,
+                "Value": 3
+              },
+              "renameByName": {
+                "Hostname": "Node",
+                "gpu": "GPU",
+                "modelName": "Model",
+                "Value": "Utilization %"
+              }
+            }
+          }],
+          "fieldConfig": {
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "Utilization %"},
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  },
+                  {
+                    "id": "custom.displayMode",
+                    "value": "gradient-gauge"
+                  },
+                  {
+                    "id": "max",
+                    "value": 100
+                  },
+                  {
+                    "id": "min",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 5,
+          "title": "GPU Allocated by Namespace",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+          "targets": [{
+            "expr": "sum by (namespace) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\", namespace=~\"dwnkim|aiops|argo\"})",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }],
+          "description": "Total GPU count requested by each namespace",
+          "transformations": [{
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true
+              },
+              "renameByName": {
+                "namespace": "Namespace",
+                "Value": "GPU Count"
+              }
+            }
           }]
+        },
+        {
+          "id": 6,
+          "title": "Running Pods by Namespace",
+          "type": "stat",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+          "targets": [{
+            "expr": "count by (namespace) (kube_pod_info{namespace=~\"dwnkim|aiops|argo\", pod=~\".*\"})",
+            "refId": "A"
+          }],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "orientation": "auto",
+            "textMode": "value_and_name"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 5},
+                  {"color": "red", "value": 10}
+                ]
+              }
+            }
+          }
         }
       ]
     }
 EOF
 
 kubectl apply -f ~/workspace/kubeflow/grafana-kubeflow-dashboard.yaml
-```
-### 팀/사용자 구분 표시
-```promql
-# 팀별 CPU 사용량
-sum(rate(container_cpu_usage_seconds_total{team!=""}[5m])) by (team)
-
-# 개인 사용자별 CPU 사용량
-sum(rate(container_cpu_usage_seconds_total{user!="", user_type="individual"}[5m])) by (user)
 ```
 
 ### Step 7: 접근 및 확인

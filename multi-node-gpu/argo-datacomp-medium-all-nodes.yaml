@@ -9,13 +9,14 @@ spec:
   entrypoint: datacomp-distributed-download
   serviceAccountName: default-editor
   
-  parallelism: 4
+  # 병렬 노드 활용을 위해 parallelism 증가 (노드당 2~3개 pod 권장)
+  parallelism: 6 
   
-  nodeSelector:
-    kubernetes.io/hostname: gn150
-  
-  # [핵심] Argo의 init/wait 컨테이너에 리소스 명시
-  # podSpecPatch를 올바르게 사용 (JSON Patch 형식)
+  # [수정] 특정 노드 고정을 해제하여 gn150, gn143, gn137 모두 사용 가능하게 변경
+  # 만약 특정 노드들만 사용하고 싶다면 해당 노드들에 공통 라벨을 붙여 선택하세요.
+  # nodeSelector:
+  #   disk-type: "shared-nfs"
+
   podSpecPatch: |
     initContainers:
     - name: init
@@ -51,7 +52,6 @@ spec:
     steps:
     - - name: generate-list
         template: list-parquet-files
-
     - - name: download-worker
         template: img2dataset-worker
         arguments:
@@ -65,15 +65,12 @@ spec:
   # ---------------------------------------------------------
   - name: list-parquet-files
     container:
-      image: python:3.10-slim
+      image: dwnusa/img2dataset-worker:v1 # [수정] 빌드한 이미지 사용
       command: ["/bin/bash", "-c"]
       args:
       - |
         python3 << 'EOF'
-        import os
-        import json
-        import glob
-        
+        import os, json, glob
         search_path = "/input_meta"
         output_file = "/tmp/output.json"
         
@@ -89,11 +86,9 @@ spec:
             exit(1)
         
         print(f"Found {len(files)} parquet files")
-        
         with open(output_file, 'w') as f:
             json.dump(files, f)
         EOF
-      
       resources:
         requests:
           cpu: 500m
@@ -101,12 +96,10 @@ spec:
         limits:
           cpu: 1
           memory: 2Gi
-      
       volumeMounts:
       - name: metadata-storage
         mountPath: /input_meta
         readOnly: true
-
     outputs:
       parameters:
       - name: file-list
@@ -114,44 +107,37 @@ spec:
           path: /tmp/output.json
 
   # ---------------------------------------------------------
-  # Template 2: 다운로드 워커
+  # Template 2: 다운로드 워커 (이미지 빌드 버전)
   # ---------------------------------------------------------
   - name: img2dataset-worker
     inputs:
       parameters:
       - name: parquet-file
-    
     retryStrategy:
       limit: 2
-    
     activeDeadlineSeconds: 21600
-    
     container:
-      image: python:3.10
+      image: dwnusa/img2dataset-worker:v1 # [수정] 빌드한 이미지 사용
       command: ["/bin/bash", "-c"]
       args:
       - |
+        # [수정] pip install 단계 제거 (이미지에 내장됨)
+        
         AVAILABLE_KB=$(df -P /output_data | awk 'NR==2 {print $4}')
-        LIMIT_KB=104857600
+        LIMIT_KB=104857600 # 100GB 미만 시 중단
         
         if [ "$AVAILABLE_KB" -lt "$LIMIT_KB" ]; then
-            echo "🚨 [Emergency Stop] Disk space is extremely low (<100GB)."
-            echo "Available: $(($AVAILABLE_KB / 1024 / 1024)) GB"
+            echo "🚨 [Emergency Stop] Disk space is extremely low."
             exit 1
-        else
-            echo "✅ Disk check passed. Available: $(($AVAILABLE_KB / 1024 / 1024)) GB"
         fi
 
-        echo "=== Installing dependencies ==="
-        pip install --no-cache-dir img2dataset pyarrow pandas
-        
         INPUT_FILE="{{inputs.parameters.parquet-file}}"
         FILENAME=$(basename "$INPUT_FILE" .parquet)
         OUTPUT_DIR="/output_data/$FILENAME"
         
         echo "Processing: $INPUT_FILE"
-        echo "Output to: $OUTPUT_DIR"
         
+        # [최적화] 커스텀 이미지 환경에서 바로 실행
         img2dataset \
           --url_list "$INPUT_FILE" \
           --input_format "parquet" \
@@ -170,15 +156,13 @@ spec:
           --enable_wandb False
         
         echo "✅ Completed: $FILENAME"
-      
       resources:
         requests:
           cpu: 4
-          memory: 16Gi # 요청량 증가 4Gi
+          memory: 16Gi
         limits:
           cpu: 8
-          memory: 32Gi # OOM 방지를 위해 한계치 증가 8Gi
-      
+          memory: 32Gi # [보강] OOM 방지를 위한 충분한 한계치
       volumeMounts:
       - name: metadata-storage
         mountPath: /input_meta

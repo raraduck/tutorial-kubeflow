@@ -8,20 +8,26 @@ metadata:
 spec:
   entrypoint: datacomp-distributed-download
   serviceAccountName: default-editor
-  parallelism: 16
+  
+  # [설정] 노드 3개 * 4개씩 = 12개 (자원이 넉넉하므로)
+  parallelism: 12
 
+  # -----------------------------------------------------------
+  # [수정 위치] podSpecPatch 내부에 affinity 추가
+  # -----------------------------------------------------------
   podSpecPatch: |
+    # [추가됨] 파드를 노드별로 최대한 분산시키는 설정
     affinity:
-      # 1. 노드 선택 (gn137 배제)
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-          - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values:
-              - gn143
-              - gn150
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: workflows.argoproj.io/workflow
+                operator: Exists
+            topologyKey: kubernetes.io/hostname
+
     initContainers:
     - name: init
       resources:
@@ -52,7 +58,7 @@ spec:
             value: "{{item}}"
         withParam: "{{steps.generate-list.outputs.parameters.file-list}}"
 
-  # [Template 1: 파일 리스트 생성기 (변경 없음)]
+  # [Template 1: 파일 리스트 생성기]
   - name: list-parquet-files
     container:
       image: dwnusa/img2dataset-worker:v1
@@ -81,7 +87,7 @@ spec:
       - name: file-list
         valueFrom: {path: /tmp/output.json}
 
-  # [Template 2: 다운로드 워커 (최적화 적용)]
+  # [Template 2: 다운로드 워커]
   - name: img2dataset-worker
     inputs:
       parameters:
@@ -91,7 +97,6 @@ spec:
     activeDeadlineSeconds: 21600
     container:
       image: dwnusa/img2dataset-worker:v1
-      # [설정] Albumentations 경고 무시 환경변수 추가
       env:
       - name: NO_ALBUMENTATIONS_UPDATE
         value: "1"
@@ -108,12 +113,6 @@ spec:
         
         echo "Processing: $INPUT_FILE"
         
-        # [주요 변경 사항 설명]
-        # 1. processes_count: 2 -> 6 (CPU 활용 극대화, limits가 8이므로 6~7 권장)
-        # 2. min_image_size: 200 -> 50 (작은 이미지 resize 실패 방지, 데이터 확보량 증가)
-        # 3. request_timeout: 10 -> 20 (다운로드 실패율 약간 감소 기대)
-        # 4. thread_count: 32 -> 64 (I/O 대기 시간 활용)
-        
         img2dataset \
           --url_list "$INPUT_FILE" \
           --input_format "parquet" \
@@ -129,7 +128,7 @@ spec:
           --encode_quality 75 \
           --retries 2 \
           --min_image_size 50 \
-          --request_timeout 50 \
+          --request_timeout 60 \
           --enable_wandb False
         
         echo "✅ Completed: $FILENAME"

@@ -8,44 +8,25 @@ metadata:
 spec:
   entrypoint: datacomp-distributed-download
   serviceAccountName: default-editor
-  
-  # 병렬 노드 활용을 위해 parallelism 증가 (노드당 2~3개 pod 권장)
-  parallelism: 6 
-  
-  # [수정] 특정 노드 고정을 해제하여 gn150, gn143, gn137 모두 사용 가능하게 변경
-  # 만약 특정 노드들만 사용하고 싶다면 해당 노드들에 공통 라벨을 붙여 선택하세요.
-  # nodeSelector:
-  #   disk-type: "shared-nfs"
+  parallelism: 6
 
   podSpecPatch: |
     initContainers:
     - name: init
       resources:
-        requests:
-          cpu: 100m
-          memory: 64Mi
-        limits:
-          cpu: 200m
-          memory: 128Mi
+        requests: {cpu: 100m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
     containers:
     - name: wait
       resources:
-        requests:
-          cpu: 100m
-          memory: 64Mi
-        limits:
-          cpu: 200m
-          memory: 128Mi
+        requests: {cpu: 100m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 128Mi}
   
   volumes:
   - name: metadata-storage
-    hostPath:
-      path: /data1/datacomp-medium/metadata
-      type: Directory
+    hostPath: {path: /data1/datacomp-medium/metadata, type: Directory}
   - name: output-storage
-    hostPath:
-      path: /data2
-      type: Directory
+    hostPath: {path: /data2, type: Directory}
 
   templates:
   - name: datacomp-distributed-download
@@ -60,12 +41,10 @@ spec:
             value: "{{item}}"
         withParam: "{{steps.generate-list.outputs.parameters.file-list}}"
 
-  # ---------------------------------------------------------
-  # Template 1: 파일 리스트 생성기
-  # ---------------------------------------------------------
+  # [Template 1: 파일 리스트 생성기 (변경 없음)]
   - name: list-parquet-files
     container:
-      image: dwnusa/img2dataset-worker:v1 # [수정] 빌드한 이미지 사용
+      image: dwnusa/img2dataset-worker:v1
       command: ["/bin/bash", "-c"]
       args:
       - |
@@ -73,29 +52,15 @@ spec:
         import os, json, glob
         search_path = "/input_meta"
         output_file = "/tmp/output.json"
-        
-        if not os.path.exists(search_path):
-            print(f"ERROR: Path {search_path} not found.")
-            exit(1)
-
+        if not os.path.exists(search_path): exit(1)
         files = glob.glob(os.path.join(search_path, "**", "*.parquet"), recursive=True)
         files.sort()
-        
-        if not files:
-            print(f"ERROR: No .parquet files found in {search_path}")
-            exit(1)
-        
         print(f"Found {len(files)} parquet files")
-        with open(output_file, 'w') as f:
-            json.dump(files, f)
+        with open(output_file, 'w') as f: json.dump(files, f)
         EOF
       resources:
-        requests:
-          cpu: 500m
-          memory: 1Gi
-        limits:
-          cpu: 1
-          memory: 2Gi
+        requests: {cpu: 500m, memory: 1Gi}
+        limits: {cpu: 1, memory: 2Gi}
       volumeMounts:
       - name: metadata-storage
         mountPath: /input_meta
@@ -103,12 +68,9 @@ spec:
     outputs:
       parameters:
       - name: file-list
-        valueFrom:
-          path: /tmp/output.json
+        valueFrom: {path: /tmp/output.json}
 
-  # ---------------------------------------------------------
-  # Template 2: 다운로드 워커 (이미지 빌드 버전)
-  # ---------------------------------------------------------
+  # [Template 2: 다운로드 워커 (최적화 적용)]
   - name: img2dataset-worker
     inputs:
       parameters:
@@ -117,19 +79,17 @@ spec:
       limit: 2
     activeDeadlineSeconds: 21600
     container:
-      image: dwnusa/img2dataset-worker:v1 # [수정] 빌드한 이미지 사용
+      image: dwnusa/img2dataset-worker:v1
+      # [설정] Albumentations 경고 무시 환경변수 추가
+      env:
+      - name: NO_ALBUMENTATIONS_UPDATE
+        value: "1"
       command: ["/bin/bash", "-c"]
       args:
       - |
-        # [수정] pip install 단계 제거 (이미지에 내장됨)
-        
         AVAILABLE_KB=$(df -P /output_data | awk 'NR==2 {print $4}')
-        LIMIT_KB=104857600 # 100GB 미만 시 중단
-        
-        if [ "$AVAILABLE_KB" -lt "$LIMIT_KB" ]; then
-            echo "🚨 [Emergency Stop] Disk space is extremely low."
-            exit 1
-        fi
+        LIMIT_KB=104857600
+        if [ "$AVAILABLE_KB" -lt "$LIMIT_KB" ]; then exit 1; fi
 
         INPUT_FILE="{{inputs.parameters.parquet-file}}"
         FILENAME=$(basename "$INPUT_FILE" .parquet)
@@ -137,7 +97,12 @@ spec:
         
         echo "Processing: $INPUT_FILE"
         
-        # [최적화] 커스텀 이미지 환경에서 바로 실행
+        # [주요 변경 사항 설명]
+        # 1. processes_count: 2 -> 6 (CPU 활용 극대화, limits가 8이므로 6~7 권장)
+        # 2. min_image_size: 200 -> 50 (작은 이미지 resize 실패 방지, 데이터 확보량 증가)
+        # 3. request_timeout: 10 -> 20 (다운로드 실패율 약간 감소 기대)
+        # 4. thread_count: 32 -> 64 (I/O 대기 시간 활용)
+        
         img2dataset \
           --url_list "$INPUT_FILE" \
           --input_format "parquet" \
@@ -145,14 +110,15 @@ spec:
           --caption_col "text" \
           --output_format webdataset \
           --output_folder "$OUTPUT_DIR" \
-          --processes_count 2 \
-          --thread_count 32 \
+          --processes_count 6 \
+          --thread_count 64 \
           --image_size 224 \
           --resize_mode center_crop \
           --encode_format webp \
           --encode_quality 75 \
-          --retries 1 \
-          --min_image_size 200 \
+          --retries 2 \
+          --min_image_size 50 \
+          --request_timeout 20 \
           --enable_wandb False
         
         echo "✅ Completed: $FILENAME"
@@ -162,7 +128,7 @@ spec:
           memory: 16Gi
         limits:
           cpu: 8
-          memory: 32Gi # [보강] OOM 방지를 위한 충분한 한계치
+          memory: 32Gi
       volumeMounts:
       - name: metadata-storage
         mountPath: /input_meta

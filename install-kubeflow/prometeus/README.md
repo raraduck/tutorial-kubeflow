@@ -113,7 +113,15 @@ prometheus:
 # Grafana 설정
 grafana:
   enabled: true
+  # [추가] 1. 컨테이너 시스템 시간대 설정 (로그 기록 등)
   
+  env:
+    TZ: Asia/Seoul
+
+  # [추가] 2. Grafana 설정 파일 오버라이드 (대시보드 UI 기본 시간)
+  grafana.ini:
+    date_formats:
+      default_timezone: Asia/Seoul
   # 관리자 비밀번호
   adminPassword: admin123!@#
   
@@ -454,7 +462,7 @@ data:
       "uid": "kubeflow-namespace",
       "timezone": "browser",
       "schemaVersion": 38,
-      "version": 0,
+      "version": 1,
       "refresh": "30s",
       "time": {
         "from": "now-1h",
@@ -471,7 +479,6 @@ data:
             "legendFormat": "{{Hostname}}",
             "refId": "A"
           }],
-          "description": "GPU utilization by node\ngn137: aiops team\ngn143: dwnkim\ngn150: argo workflows",
           "fieldConfig": {
             "defaults": {
               "unit": "percent",
@@ -486,14 +493,12 @@ data:
           "type": "timeseries",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
           "targets": [{
-            "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"dwnkim|aiops|argo\", container!=\"POD\"}[5m]))",
+            "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"dwnkim|aiops|argo|gen01|3dvlm\", container!=\"POD\"}[5m]))",
             "legendFormat": "{{namespace}}",
             "refId": "A"
           }],
           "fieldConfig": {
-            "defaults": {
-              "unit": "cores"
-            }
+            "defaults": { "unit": "cores" }
           }
         },
         {
@@ -502,19 +507,17 @@ data:
           "type": "timeseries",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
           "targets": [{
-            "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"dwnkim|aiops|argo\", container!=\"POD\"})",
+            "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"dwnkim|aiops|argo|gen01|3dvlm\", container!=\"POD\"})",
             "legendFormat": "{{namespace}}",
             "refId": "A"
           }],
           "fieldConfig": {
-            "defaults": {
-              "unit": "bytes"
-            }
+            "defaults": { "unit": "bytes" }
           }
         },
         {
           "id": 4,
-          "title": "GPU Details by Node",
+          "title": "GPU Details (Who is using?)",
           "type": "table",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
           "targets": [{
@@ -536,67 +539,87 @@ data:
               },
               "indexByName": {
                 "Hostname": 0,
-                "gpu": 1,
-                "modelName": 2,
-                "Value": 3
+                "namespace": 1,
+                "pod": 2,
+                "modelName": 3,
+                "gpu": 4,
+                "Value": 5
               },
               "renameByName": {
                 "Hostname": "Node",
-                "gpu": "GPU",
+                "namespace": "Namespace",
+                "pod": "Pod Name",
                 "modelName": "Model",
-                "Value": "Utilization %"
+                "gpu": "GPU Index",
+                "Value": "Util %"
               }
             }
           }],
           "fieldConfig": {
             "overrides": [
               {
-                "matcher": {"id": "byName", "options": "Utilization %"},
+                "matcher": {"id": "byName", "options": "Util %"},
                 "properties": [
-                  {
-                    "id": "unit",
-                    "value": "percent"
-                  },
-                  {
-                    "id": "custom.displayMode",
-                    "value": "gradient-gauge"
-                  },
-                  {
-                    "id": "max",
-                    "value": 100
-                  },
-                  {
-                    "id": "min",
-                    "value": 0
-                  }
+                  { "id": "unit", "value": "percent" },
+                  { "id": "custom.displayMode", "value": "gradient-gauge" },
+                  { "id": "max", "value": 100 },
+                  { "id": "min", "value": 0 }
                 ]
               }
             ]
           }
         },
         {
+          "id": 7,
+          "title": "GPU Capacity Status (Free / Total)",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 16},
+          "targets": [
+            {
+              "expr": "sum by (node) (kube_node_status_capacity{resource=\"nvidia_com_gpu\"}) - on(node) group_left() sum by (node) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"}) or sum by (node) (kube_node_status_capacity{resource=\"nvidia_com_gpu\"})",
+              "legendFormat": "{{node}} (Free)",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (node) (kube_node_status_capacity{resource=\"nvidia_com_gpu\"})",
+              "legendFormat": "{{node}} (Total)",
+              "refId": "B",
+              "hide": true
+            }
+          ],
+          "description": "각 노드별로 남은 GPU 개수를 보여줍니다. (Capacity - Requests)",
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": 0 },
+                  { "color": "orange", "value": 1 },
+                  { "color": "green", "value": 2 }
+                ]
+              },
+              "min": 0,
+              "decimals": 0
+            }
+          }
+        },
+        {
           "id": 5,
           "title": "GPU Allocated by Namespace",
           "type": "table",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 20},
           "targets": [{
-            "expr": "sum by (namespace) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\", namespace=~\"dwnkim|aiops|argo\"})",
+            "expr": "sum by (namespace) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\", namespace=~\"dwnkim|aiops|argo|gen01|3dvlm\"})",
             "format": "table",
             "instant": true,
             "refId": "A"
           }],
-          "description": "Total GPU count requested by each namespace",
           "transformations": [{
             "id": "organize",
             "options": {
-              "excludeByName": {
-                "Time": true,
-                "__name__": true
-              },
-              "renameByName": {
-                "namespace": "Namespace",
-                "Value": "GPU Count"
-              }
+              "excludeByName": { "Time": true, "__name__": true },
+              "renameByName": { "namespace": "Namespace", "Value": "GPU Count" }
             }
           }]
         },
@@ -604,29 +627,15 @@ data:
           "id": 6,
           "title": "Running Pods by Namespace",
           "type": "stat",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 20},
           "targets": [{
-            "expr": "count by (namespace) (kube_pod_info{namespace=~\"dwnkim|aiops|argo\", pod=~\".*\"})",
+            "expr": "count by (namespace) (kube_pod_info{namespace=~\"dwnkim|aiops|argo|gen01|3dvlm\", pod=~\".*\"})",
             "refId": "A"
           }],
           "options": {
             "colorMode": "value",
             "graphMode": "area",
-            "orientation": "auto",
             "textMode": "value_and_name"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {"color": "green", "value": null},
-                  {"color": "yellow", "value": 5},
-                  {"color": "red", "value": 10}
-                ]
-              }
-            }
           }
         }
       ]

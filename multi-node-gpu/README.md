@@ -188,6 +188,7 @@ kubectl run gpu-test --rm -it --restart=Never --image=nvidia/cuda:12.2.0-base-ub
 ## **2. kubespray 설치**
 ### 0. python version change
 ```bash
+sudo timedatectl set-timezone Asia/Seoul
 sudo apt update
 sudo apt-get install -y git python3 python3-pip python3-venv
 python3 -m venv venv

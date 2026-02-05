@@ -730,3 +730,58 @@ kubectl exec -n kube-system $(kubectl get pod -n kube-system -l app=dcgm-exporte
 # ✅ 자동 알림으로 문제 조기 발견
 # ✅ 30일간 히스토리 데이터 분석
 ```
+### Step 9: Grafana 에 STMP 이메일 등록 (알림용)
+grafana-smtp-values.yaml
+> 임시방편임 (안전하게는 secret으로 app password를 추가해야함)
+```bash
+helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+  -n monitoring \
+  -f prometheus-values.yaml \
+  -f grafana-smtp-values.yaml \
+  --set grafana.assertNoLeakedSecrets=false
+```
+트래픽 알림용 PromQL
+```bash
+# dwnkim 네임스페이스의 총 트래픽 양 (Byte/sec)
+sum(rate(container_network_receive_bytes_total{namespace="dwnkim"}[1m])) + sum(rate(container_network_transmit_bytes_total{namespace="dwnkim"}[1m]))
+```
+
+### 안전한 Secret 등록 방법
+```bash
+# 1. 실제 앱 비밀번호로 Secret 생성
+kubectl create secret generic grafana-smtp-secret \
+  --from-literal=smtp-password='여기에실제앱비밀번호입력' \
+  -n monitoring
+```
+주의사항:
+- Gmail 앱 비밀번호는 16자리 문자열입니다 (공백 포함 또는 제외 둘 다 가능)
+- 작은따옴표 '...' 안에 넣어야 특수문자가 있어도 안전합니다
+- 예시: 'abcd efgh ijkl mnop' 또는 'abcdefghijklmnop'
+
+아래와 같이 grafana-smtp-secret.yaml 을 만들어 Helm 차트 업그레이드
+> `grafana-smtp-secret` 이 이름으로 연결되는것임 
+```yaml
+# grafana-smtp-secret.yaml 
+grafana:
+  envFromSecret: grafana-smtp-secret
+  grafana.ini:
+    smtp:
+      enabled: true
+      host: smtp.gmail.com:587
+      user: your-email@gmail.com
+      password: $__env{smtp-password}  # Secret에서 가져옴
+      skip_verify: false
+      from_address: your-email@gmail.com
+      from_name: Grafana Monitoring
+      startTLS_policy: MandatoryStartTLS
+```
+```bash
+# Helm 차트 업그레이드
+helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+  -n monitoring \
+  -f prometheus-values.yaml \
+  -f grafana-smtp-secret.yaml
+
+# 업데이트 반영
+kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring
+```

@@ -1,0 +1,18 @@
+grafana:
+  service:
+    type: NodePort
+    nodePort: 30300  # 원하는 포트 번호 고정
+    port: 80
+
+  grafana.ini:
+    smtp:
+      enabled: true
+      host: smtp.gmail.com:587
+      user: dwnkim@gmail.com
+      password: "abcd efgh ijkl mnop"
+      skip_verify: false
+      from_address: dwnkim@gmail.com
+      from_name: Grafana
+      startTLS_policy: MandatoryStartTLS
+    server:
+      root_url: http://192.168.0.80:30300/

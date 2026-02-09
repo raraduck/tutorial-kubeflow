@@ -150,7 +150,7 @@ with DAG(
     'k8s_3day_shutdown_procedure',
     default_args=default_args,
     description='3일에 걸친 Kubernetes Graceful Shutdown',
-    schedule_interval='@once',  # 한 번만 실행
+    schedule_interval=None, # schedule_interval='@once',  # 한 번만 실행
     catchup=False,
     tags=['maintenance', 'shutdown', 'kubernetes'],
 ) as dag:

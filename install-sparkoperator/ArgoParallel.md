@@ -1,7 +1,36 @@
 # Argo Workflow 생성 및 실행 (datacomp-workflow.yaml)
 
 ## 참고: kubeflow 로 설치된 argo 를 사용할때에는 사용자 네임스페이스마다 minio secret 권한이 필요함
+```yaml
+# <namespace>-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: default-pod-patch-role
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: default-pod-patch-role-binding
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: <namespace>
+roleRef:
+  kind: ClusterRole
+  name: default-pod-patch-role
+  apiGroup: rbac.authorization.k8s.io
+```
 ```bash
+# 네임스페이스 내에서 실행시킬거라면 rbac 설정이 필요함 (예시: ClusterRole)
+kubectl create -f <namespace>-rbac.yaml
 # kubeflow 네임스페이스에 있는 yaml 을 복사하여 <namespace> 로 치환한 뒤 secret 생성
 kubectl get secret mlpipeline-minio-artifact -n kubeflow -o yaml | sed 's/namespace: kubeflow/namespace: <namespace>/' | kubectl apply -f 
 # networkpolicy 에서 차단되든 경우가 있을 수 있으므로 kubeflow 네임스페이스에서 networkpolicy 를 모두 허용

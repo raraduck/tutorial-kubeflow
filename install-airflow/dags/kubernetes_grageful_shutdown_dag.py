@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 default_args = {
     'owner': 'admin',
     'depends_on_past': False,
-    'start_date': datetime(2026, 2, 9),
+    'start_date': datetime(2025, 1, 1),
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }

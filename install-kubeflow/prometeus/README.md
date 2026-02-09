@@ -79,36 +79,35 @@ prometheus:
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
     
-    # 추가 스크래핑 설정
-    additionalScrapeConfigs:
-    # GPU 메트릭 수집 (DCGM Exporter)
-    - job_name: 'dcgm-exporter'
-      kubernetes_sd_configs:
-      - role: pod
-        namespaces:
-          names:
-          - kube-system
-      relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_label_app]
-        regex: dcgm-exporter
-        action: keep
-      - source_labels: [__meta_kubernetes_namespace]
-        target_label: namespace
-      - source_labels: [__meta_kubernetes_pod_name]
-        target_label: pod
-    
-    # Kubeflow Profile 메트릭
-    - job_name: 'kubeflow-profiles'
-      kubernetes_sd_configs:
-      - role: pod
-        namespaces:
-          names:
-          - kubeflow
-      relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_label_kfam_kubeflow_org_user]
-        target_label: kubeflow_user
-      - source_labels: [__meta_kubernetes_namespace]
-        target_label: namespace
+    # # 추가 스크래핑 설정
+    # additionalScrapeConfigs:
+    # # GPU 메트릭 수집 (DCGM Exporter)
+    # - job_name: 'dcgm-exporter'
+    #   kubernetes_sd_configs:
+    #   - role: pod
+    #     namespaces:
+    #       names:
+    #       - kube-system
+    #   relabel_configs:
+    #   - source_labels: [__meta_kubernetes_pod_label_app]
+    #     regex: dcgm-exporter
+    #     action: keep
+    #   - source_labels: [__meta_kubernetes_namespace]
+    #     target_label: namespace
+    #   - source_labels: [__meta_kubernetes_pod_name]
+    #     target_label: pod
+    # # Kubeflow Profile 메트릭
+    # - job_name: 'kubeflow-profiles'
+    #   kubernetes_sd_configs:
+    #   - role: pod
+    #     namespaces:
+    #       names:
+    #       - kubeflow
+    #   relabel_configs:
+    #   - source_labels: [__meta_kubernetes_pod_label_kfam_kubeflow_org_user]
+    #     target_label: kubeflow_user
+    #   - source_labels: [__meta_kubernetes_namespace]
+    #     target_label: namespace
 
 # Grafana 설정
 grafana:

@@ -125,6 +125,9 @@ with DAG(
             minimum=0, 
             maximum=8
         )
+    },
+    access_control={
+        'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
     }
 ) as dag:
 

@@ -241,6 +241,9 @@ with DAG(
     schedule_interval=None,
     catchup=False,
     tags=['kubernetes', 'python-client', 'hello-world'],
+    access_control={
+        'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
+    }
 ) as dag:
 
     # Task 1: 네임스페이스의 Pod 목록 조회 (실행 전)

@@ -25,6 +25,9 @@ with DAG(
             title="수신자 이메일",
             description="메일을 받을 이메일 주소를 입력하세요."
         )
+    },
+    access_control={
+        'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
     }
 ) as dag:
 

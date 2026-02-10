@@ -145,6 +145,9 @@ with DAG(
     schedule_interval=None, 
     catchup=False,
     tags=['maintenance', 'shutdown', 'kubernetes'],
+    access_control={
+        'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
+    }
 ) as dag:
 
     # --- Day 5: Notification ---

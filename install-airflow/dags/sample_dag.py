@@ -17,7 +17,10 @@ with DAG(
         "start_date": datetime(2023, 1, 1)  # DAG 시작일 (schedule 기준)
     },
     schedule_interval="@daily",  # 매일 1회 실행
-    catchup=False,  # 과거 실행 기록은 무시 (backfill 안 함)
+    catchup=False,  # 과거 실행 기록은 무시 (backfill 안 함),
+    access_control={
+        'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
+    }
 ) as dag:
 
     # DummyOperator: 시작 지점 (아무 작업 안 함, 시각적으로만 사용)

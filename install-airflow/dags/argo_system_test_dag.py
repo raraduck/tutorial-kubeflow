@@ -194,9 +194,9 @@ with DAG(
             description="GPU 부하 테스트 지속 시간(초)입니다."
         )
     },
-    access_control={
-        'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
-    }
+    # access_control={
+    #     'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
+    # }
 ) as dag:
 
     # 1. Pod 병렬 생성

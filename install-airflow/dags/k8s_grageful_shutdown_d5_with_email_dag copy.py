@@ -111,7 +111,7 @@ def final_shutdown_measure(**context):
 # -------------------------------------------------------------------
 
 with DAG(
-    'k8s_5day_shutdown_with_email',
+    'k8s_5day_shutdown_with_email_v1',
     default_args=default_args,
     description='5-Day Graceful Shutdown with Email Notifications',
     schedule_interval=None,

@@ -13,9 +13,9 @@ with DAG(
         "job_count": Param(12, type="integer"),
         "duration": Param(600, type="integer")
     },
-    access_control={
-        'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
-    }
+    # access_control={
+    #     'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
+    # }
 ) as dag:
 
     submit_argo = KubernetesPodOperator(

@@ -101,7 +101,7 @@ def add_to_mailing_list_db(**context):
 # -------------------------------------------------------------------
 
 with DAG(
-    'kubeflow_user_onboarding',
+    'kubeflow_user_onboarding_v1',
     default_args=default_args,
     schedule_interval=None,
     tags=['kubeflow', 'admin', 'onboarding'],

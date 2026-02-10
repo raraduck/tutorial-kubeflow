@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: gpu-burn-test-
+spec:
+  entrypoint: main
+  arguments:
+    parameters:
+    - name: job-count
+      value: "12"
+    - name: duration
+      value: "300"
+
+  templates:
+  - name: main
+    steps:
+    - - name: run-burn-jobs
+        template: gpu-burn-task
+        arguments:
+          parameters:
+          - name: duration-sec
+            value: "{{workflow.parameters.duration}}"
+        withSequence:
+          count: "{{workflow.parameters.job-count}}"
+
+  - name: gpu-burn-task
+    inputs:
+      parameters:
+      - name: duration-sec
+    container:
+      image: docker.io/jorghi21/gpu-burn-test:latest
+      args: ["{{inputs.parameters.duration-sec}}"]
+      resources:
+        limits:
+          nvidia.com/gpu: 1

@@ -105,17 +105,17 @@ def submit_argo_workflow_via_api(**context):
         raise
 
 with DAG(
-    'trigger_argo_python_api',
+    'argo_gpu_endurance_test',
     start_date=datetime(2025, 1, 1),
     schedule_interval=None,
-    tags=['argo', 'python-api'],
+    tags=['argo', 'gpu', 'endurance-test', 'test'],
     params={
         "job_count": Param(12, type="integer"),
         "duration": Param(600, type="integer")
     },
-    # access_control={
-    #     'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
-    # }
+    access_control={
+        'K8s_Team': {'can_read', 'can_edit'},
+    }
 ) as dag:
 
     # KubernetesPodOperator 대신 PythonOperator를 사용합니다.

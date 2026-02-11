@@ -127,6 +127,8 @@ kubectl logs -n kube-system -l name=nvidia-device-plugin-ds
 ### 3. 노드 자원 인식 확인
 Control Plane에서 아래 명령어를 입력해 보세요.
 ```bash
+# 한방에 조회
+kubectl get nodes -o custom-columns="NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu"
 # 15줄까지 조회하거나, nvidia 키워드로 직접 찾기
 kubectl describe node node11 | grep -A 15 "Capacity"
 # 또는

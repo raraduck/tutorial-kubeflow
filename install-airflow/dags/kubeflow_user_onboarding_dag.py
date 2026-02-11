@@ -127,7 +127,7 @@ with DAG(
         )
     },
     access_control={
-        'NT_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
+        'KF_Team': {'can_read', 'can_edit'}  # 읽기 + 실행 권한 부여
     }
 ) as dag:
 

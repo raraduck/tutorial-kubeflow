@@ -110,8 +110,8 @@ with DAG(
     schedule_interval=None,
     tags=['argo', 'gpu', 'endurance-test', 'test'],
     params={
-        "job_count": Param(12, type="integer"),
-        "duration": Param(600, type="integer")
+        "job_count": Param(60, type="integer", title="병렬 GPU 개수: 60=서버 15개"),
+        "duration": Param(3600, type="integer", title="가동 시간(초): 3600=1시간")
     },
     access_control={
         'K8s_Team': {'can_read', 'can_edit'},

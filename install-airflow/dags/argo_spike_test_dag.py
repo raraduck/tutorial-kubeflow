@@ -143,10 +143,10 @@ with DAG(
     schedule_interval=None,
     tags=['argo', 'gpu', 'stress-test', 'test'],
     params={
-        "job_count": Param(12, type="integer", title="병렬 GPU 개수"),
-        "burn_time": Param(60, type="integer", title="가동 시간(초) - Spike Up"),
-        "cool_time": Param(30, type="integer", title="휴식 시간(초) - Spike Down"),
-        "iterations": Param(10, type="integer", title="반복 횟수")
+        "job_count": Param(60, type="integer", title="병렬 GPU 개수: 60=서버 15개"),
+        "burn_time": Param(600, type="integer", title="가동 시간(초): 600=10분"),
+        "cool_time": Param(300, type="integer", title="휴식 시간(초): 300=5분"),
+        "iterations": Param(4, type="integer", title="반복 횟수: 15분씩 4회=1시간")
     },
     access_control={
         'K8s_Team': {'can_read', 'can_edit'},

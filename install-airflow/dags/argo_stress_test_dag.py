@@ -33,7 +33,7 @@ def submit_argo_step_up_test_via_api(**context):
     # 로직: 1개 가동 -> 2개 가동 -> ... -> N개 가동 (중간 휴식 없음)
     main_steps = []
     
-    for i in range(1, max_gpus + 1):
+    for i in range(10, max_gpus + 1, 6):
         step_name = f"step-up-level-{i}"
         
         step_burn = {
@@ -122,8 +122,8 @@ with DAG(
     schedule_interval=None,
     tags=['argo', 'gpu', 'stress-test', 'step-up', 'test'],
     params={
-        "max_gpus": Param(12, type="integer", title="최대 도달 GPU 개수 (1~N)"),
-        "step_duration": Param(300, type="integer", title="단계별 유지 시간(초)"),
+        "max_gpus": Param(60, type="integer", title="최대 도달 GPU 개수 (1~N): 60=서버 15개"),
+        "step_duration": Param(600, type="integer", title="단계별 유지 시간(초): 600=10분 (10개씩 증가)"),
     },
     access_control={
         'K8s_Team': {'can_read', 'can_edit'},

@@ -16,8 +16,9 @@ def submit_argo_step_up_test_via_api(**context):
     
     # 2. 파라미터 가져오기
     params = context['params']
-    max_gpus = int(params['max_gpus'])      # 최대 도달 GPU 개수 (예: 12)
-    step_duration = str(params['step_duration']) # 각 단계별 유지 시간 (예: 30초)
+    max_gpus = int(params['max_gpus'])      # 최대 도달 GPU 개수
+    step_duration = str(params['step_duration']) # 각 단계별 유지 시간
+    step_size = int(params['step_size'])    # [변경] 증가 단위 (예: 10)
 
     # 3. [GPU Burn] 컨테이너 정의
     burn_container_spec = k8s.V1Container(
@@ -30,10 +31,12 @@ def submit_argo_step_up_test_via_api(**context):
     )
 
     # 4. Argo Workflow Steps 생성 (Staircase Pattern)
-    # 로직: 1개 가동 -> 2개 가동 -> ... -> N개 가동 (중간 휴식 없음)
+    # 로직: step_size개 가동 -> 2*step_size개 가동 -> ... -> max_gpus
     main_steps = []
     
-    for i in range(10, max_gpus + 1, 6):
+    # [변경] range(시작값, 끝값, 증가값)을 파라미터로 동적 처리
+    # 예: step_size=10 이면 -> 10, 20, 30 ... 순으로 진행
+    for i in range(step_size, max_gpus + 1, step_size):
         step_name = f"step-up-level-{i}"
         
         step_burn = {
@@ -42,7 +45,7 @@ def submit_argo_step_up_test_via_api(**context):
             "arguments": {
                 "parameters": [
                     {"name": "duration-sec", "value": step_duration},
-                    {"name": "count", "value": str(i)} # [핵심] 이번 단계에 실행할 GPU 개수
+                    {"name": "count", "value": str(i)} # 이번 단계에 실행할 GPU 개수
                 ]
             }
         }
@@ -65,13 +68,13 @@ def submit_argo_step_up_test_via_api(**context):
                     "name": "main",
                     "steps": main_steps
                 },
-                # Template 2: Dynamic Parallel Controller (개수를 입력받음)
+                # Template 2: Dynamic Parallel Controller
                 {
                     "name": "parallel-burn-template",
                     "inputs": {
                         "parameters": [
                             {"name": "duration-sec"},
-                            {"name": "count"} # [변경] 개수를 파라미터로 받음
+                            {"name": "count"}
                         ]
                     },
                     "steps": [
@@ -82,7 +85,6 @@ def submit_argo_step_up_test_via_api(**context):
                                 "arguments": {
                                     "parameters": [{"name": "duration-sec", "value": "{{inputs.parameters.duration-sec}}"}]
                                 },
-                                # [핵심] 입력받은 count만큼 병렬 실행
                                 "withSequence": {
                                     "count": "{{inputs.parameters.count}}"
                                 }
@@ -123,7 +125,9 @@ with DAG(
     tags=['argo', 'gpu', 'stress-test', 'step-up', 'test'],
     params={
         "max_gpus": Param(60, type="integer", title="최대 도달 GPU 개수 (1~N): 60=서버 15개"),
-        "step_duration": Param(600, type="integer", title="단계별 유지 시간(초): 600=10분 (10개씩 증가)"),
+        "step_duration": Param(600, type="integer", title="단계별 유지 시간(초): 600=10분 (기본 10개씩 증가)"),
+        # [변경] 증가 단위 파라미터 추가
+        "step_size": Param(10, type="integer", title="증가 단위 (GPU 개수): 예 10 -> 10, 20, 30..."),
     },
     access_control={
         'K8s_Team': {'can_read', 'can_edit'},
@@ -134,3 +138,4 @@ with DAG(
         task_id='submit_step_up_test',
         python_callable=submit_argo_step_up_test_via_api
     )
+

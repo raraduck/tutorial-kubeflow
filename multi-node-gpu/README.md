@@ -508,3 +508,70 @@ stream {
     }
 }
 ```
+
+# 모든 설치 이후 etcd 용량 늘리기 (운영용)
+
+🛠️ etcd 용량 8GB로 증설하기 (단계별 가이드)
+
+이 작업은 **모든 마스터 노드(Control Plane)**에서 동일하게 수행해야 합니다.
+
+## 1. 바이트 단위 계산
+
+etcd는 설정값을 바이트(Byte) 단위로 받습니다.
+
+- 2GB (기본값): 2147483648
+- 4GB: 4294967296
+- 8GB (권장): 8589934592
+
+## 2. 설정 파일 수정 (etcd.yaml)
+
+대부분의 Kubernetes(Kubespray/kubeadm) 배포판에서 etcd는 Static Pod로 실행되며, 설정 파일은 아래 경로에 있습니다.
+
+### 1. 백업 먼저 하기 (필수):
+```bash
+sudo cp /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/manifests/etcd.yaml.bak
+```
+
+### 2. 파일 편집:
+```bash
+sudo nano /etc/kubernetes/manifests/etcd.yaml
+```
+
+### 3. 옵션 추가:
+`spec.containers.command` 섹션을 찾아 아래 줄을 추가하세요. (순서는 상관없으나 보기 좋게 중간에 넣으세요.)
+```yaml
+- --quota-backend-bytes=8589934592
+```
+[예시 화면]
+```yaml
+spec:
+  containers:
+  - command:
+    - etcd
+    - --advertise-client-urls=https://192.168.1.10:2379
+    - --cert-file=/etc/kubernetes/pki/etcd/server.crt
+    - --quota-backend-bytes=8589934592  # <--- 여기에 추가!
+    - --data-dir=/var/lib/etcd
+    ...
+```
+
+## 3. 적용 및 재시작
+Static Pod의 특성상, 파일을 저장하고 닫으면(Ctrl+O, Enter, Ctrl+X) kubelet이 변경 사항을 감지하고 자동으로 etcd 팟을 재시작합니다.
+
+- 약 1~2분 정도 소요될 수 있습니다.
+- watch crictl ps 또는 watch docker ps로 etcd 컨테이너가 새로 떴는지 확인하세요.
+
+🚨 주의사항 및 마무리
+1. 모든 마스터 노드 적용
+만약 마스터 노드가 3대라면, 3대 모두 똑같이 설정하고 재시작해야 합니다. (하나씩 순차적으로 하세요. 한 번에 다 끄면 클러스터 멈춥니다.)
+
+2. 알람 해제 (이미 꽉 찬 상태라면)
+용량을 늘렸더라도, 현재 걸려 있는 NOSPACE 알람은 자동으로 사라지지 않습니다. 설정을 마친 후 마지막으로 알람을 꺼주세요.
+
+```bash
+sudo ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/ssl/etcd/ssl/ca.pem \
+  --cert=/etc/ssl/etcd/ssl/admin-cl01.pem \
+  --key=/etc/ssl/etcd/ssl/admin-cl01-key.pem \
+  alarm disarm
+```

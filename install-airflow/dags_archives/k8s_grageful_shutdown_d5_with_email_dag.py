@@ -1,17 +1,17 @@
 """
-Kubernetes 5-Day Graceful Shutdown DAG (With Email Notification)
+Kubernetes 5-Day Graceful Shutdown DAG (With Email Notification & Dynamic Wait)
 
 [진행 순서]
 - D-5: [이메일] 종료 5일 전 알림 (백업 권고)
-- [24시간 대기]
+- [대기] 입력한 시간(Hour)만큼 대기
 - D-4: [이메일] 종료 4일 전 알림 (내일부터 신규 할당 중단 예고)
-- [24시간 대기]
+- [대기] 입력한 시간(Hour)만큼 대기
 - D-3: [Action] Cordon (신규 파드 생성 금지)
-- [24시간 대기]
+- [대기] 입력한 시간(Hour)만큼 대기
 - D-2: [Action] Soft Drain (안전한 축출)
-- [24시간 대기]
+- [대기] 입력한 시간(Hour)만큼 대기
 - D-1: [Action] Force Drain (강제 종료)
-- [24시간 대기]
+- [대기] 입력한 시간(Hour)만큼 대기
 - D-0: [Action] Final Shutdown (클러스터 종료)
 """
 
@@ -19,8 +19,9 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.email import EmailOperator
-from airflow.sensors.time_delta import TimeDeltaSensor
+from airflow.sensors.python import PythonSensor
 from airflow.models.param import Param
+from airflow.utils import timezone
 from kubernetes import client, config
 import logging
 
@@ -34,6 +35,31 @@ default_args = {
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
+
+# -------------------------------------------------------------------
+# Helper Functions (Wait Logic)
+# -------------------------------------------------------------------
+
+def check_wait_time(prev_task_id, param_name, **context):
+    """이전 태스크의 종료 시간을 기준으로 파라미터로 입력받은 시간(Hour)만큼 대기"""
+    # 이전 태스크의 정보 가져오기
+    ti = context['dag_run'].get_task_instance(prev_task_id)
+    if not ti or not ti.end_date:
+        return False
+        
+    # 파라미터에서 대기 시간(시간 단위) 가져오기
+    wait_hours = float(context['params'].get(param_name, 24))
+    
+    # 목표 실행 시간 = 이전 태스크 종료 시간 + 대기 시간
+    target_time = ti.end_date + timedelta(hours=wait_hours)
+    
+    logger.info(f"[{prev_task_id}] 종료 시간: {ti.end_date}")
+    logger.info(f"대기 설정 시간: {wait_hours} 시간")
+    logger.info(f"목표 다음 실행 시간: {target_time} | 현재 시간: {timezone.utcnow()}")
+    
+    # 현재 시간이 목표 시간을 넘었으면 True 반환하여 다음 태스크로 진행
+    return timezone.utcnow() >= target_time
+
 
 # -------------------------------------------------------------------
 # K8s Helper Functions (Action Logic)
@@ -78,7 +104,7 @@ def drain_nodes_func(force=False, **context):
         pods = v1.list_pod_for_all_namespaces(field_selector=field_selector)
         
         for pod in pods.items:
-            # DaemonSet 등은 스킵하는 로직 포함 (간략화)
+            # DaemonSet 등은 스킵
             if any(o.kind == 'DaemonSet' for o in (pod.metadata.owner_references or [])):
                 continue
 
@@ -111,24 +137,41 @@ def final_shutdown_measure(**context):
 # -------------------------------------------------------------------
 
 with DAG(
-    'k8s_5day_shutdown_with_email_v1',
+    'k8s_5day_shutdown_with_email_v2',
     default_args=default_args,
-    description='5-Day Graceful Shutdown with Email Notifications',
+    description='Graceful Shutdown with Dynamic Wait Times & Email',
     schedule_interval=None,
     catchup=False,
     tags=['maintenance', 'shutdown', 'email'],
     
-    # [핵심] 실행 시 이메일 주소를 입력받는 폼(Form) 설정
+    # 실행 시 입력받는 폼(Form) 설정
     params={
         "receiver_email": Param(
             default="admin@company.com", 
             type="string", 
             title="수신자 이메일 (Notification Receiver)",
-            description="D-5, D-4 등 주요 단계마다 알림을 받을 이메일 주소입니다."
-        )
+        ),
+        "wait_hours_d5_to_d4": Param(
+            default=24, 
+            type="number", 
+            title="D-5 -> D-4 대기(시간)",
+            description="소수점 입력 가능 (예: 0.5 입력 시 30분 대기)"
+        ),
+        "wait_hours_d4_to_d3": Param(
+            default=24, type="number", title="D-4 -> D-3 대기(시간)"
+        ),
+        "wait_hours_d3_to_d2": Param(
+            default=24, type="number", title="D-3 -> D-2 대기(시간)"
+        ),
+        "wait_hours_d2_to_d1": Param(
+            default=24, type="number", title="D-2 -> D-1 대기(시간)"
+        ),
+        "wait_hours_d1_to_d0": Param(
+            default=24, type="number", title="D-1 -> D-0 대기(시간)"
+        ),
     },
     access_control={
-        'K8s_Team': {'can_read', 'can_edit'},  # 읽기 + 실행 권한 부여
+        'K8s_Team': {'can_read', 'can_edit'},
         'KF_Team': {'can_read', 'can_edit'}
     }
 ) as dag:
@@ -136,26 +179,16 @@ with DAG(
     # --- D-5: 공지 이메일 발송 ---
     d5_email = EmailOperator(
         task_id='d5_notify_backup',
-        to='{{ params.receiver_email }}', # 입력받은 파라미터 사용
+        to='{{ params.receiver_email }}',
         subject='[D-5 Notice] Kubernetes 클러스터 종료 5일 전 알림',
-        html_content="""
-        <h3>🚨 클러스터 종료 카운트다운 시작 (D-5)</h3>
-        <p>안녕하세요, MLOps Admin입니다.</p>
-        <p>유지보수를 위해 <b>5일 뒤 클러스터가 완전히 종료될 예정</b>입니다.</p>
-        <hr>
-        <h4>[사용자 조치 사항]</h4>
-        <ul>
-            <li><b>데이터 백업:</b> 중요한 모델 가중치(Checkpoints)와 데이터셋을 S3/NAS로 백업하십시오.</li>
-            <li><b>작업 정리:</b> 장기 실행 학습(Long-running Job)은 조기에 마무리해 주시기 바랍니다.</li>
-        </ul>
-        <p>감사합니다.</p>
-        """
+        html_content="<h3>🚨 클러스터 종료 카운트다운 시작 (D-5)</h3><p>유지보수를 위해 5일 뒤 클러스터가 완전히 종료될 예정입니다.</p>"
     )
 
-    wait_d5_to_d4 = TimeDeltaSensor(
-        task_id='wait_24h_d5_to_d4',
-        delta=timedelta(days=1),
-        mode='reschedule'
+    wait_d5_to_d4 = PythonSensor(
+        task_id='wait_d5_to_d4',
+        python_callable=check_wait_time,
+        op_kwargs={'prev_task_id': 'd5_notify_backup', 'param_name': 'wait_hours_d5_to_d4'},
+        mode='reschedule', poke_interval=60 # 5분 주기로 체크
     )
 
     # --- D-4: 경고 이메일 발송 ---
@@ -163,22 +196,14 @@ with DAG(
         task_id='d4_notify_scheduling_stop',
         to='{{ params.receiver_email }}',
         subject='[D-4 Warning] 내일부터 신규 자원 할당이 중단됩니다',
-        html_content="""
-        <h3>⚠️ 신규 작업 생성 제한 예고 (D-4)</h3>
-        <p>클러스터 종료 4일 전입니다.</p>
-        <p><b>내일(D-3)부터 모든 노드가 Cordon 처리되어, 새로운 Pod 생성이 불가능합니다.</b></p>
-        <hr>
-        <ul>
-            <li>현재 실행 중인 작업은 유지되지만, 내일부터는 실행되지 않습니다.</li>
-            <li>배포 파이프라인(CI/CD)을 잠시 중단해 주십시오.</li>
-        </ul>
-        """
+        html_content="<h3>⚠️ 신규 작업 생성 제한 예고 (D-4)</h3><p>내일(D-3)부터 모든 노드가 Cordon 처리되어, 새로운 Pod 생성이 불가능합니다.</p>"
     )
 
-    wait_d4_to_d3 = TimeDeltaSensor(
-        task_id='wait_24h_d4_to_d3',
-        delta=timedelta(days=1),
-        mode='reschedule'
+    wait_d4_to_d3 = PythonSensor(
+        task_id='wait_d4_to_d3',
+        python_callable=check_wait_time,
+        op_kwargs={'prev_task_id': 'd4_notify_scheduling_stop', 'param_name': 'wait_hours_d4_to_d3'},
+        mode='reschedule', poke_interval=60
     )
 
     # --- D-3: Cordon ---
@@ -187,10 +212,11 @@ with DAG(
         python_callable=cordon_all_nodes_func,
     )
 
-    wait_d3_to_d2 = TimeDeltaSensor(
-        task_id='wait_24h_d3_to_d2',
-        delta=timedelta(days=1),
-        mode='reschedule'
+    wait_d3_to_d2 = PythonSensor(
+        task_id='wait_d3_to_d2',
+        python_callable=check_wait_time,
+        op_kwargs={'prev_task_id': 'd3_cordon_nodes', 'param_name': 'wait_hours_d3_to_d2'},
+        mode='reschedule', poke_interval=60
     )
 
     # --- D-2: Soft Drain ---
@@ -200,10 +226,11 @@ with DAG(
         op_kwargs={'force': False},
     )
 
-    wait_d2_to_d1 = TimeDeltaSensor(
-        task_id='wait_24h_d2_to_d1',
-        delta=timedelta(days=1),
-        mode='reschedule'
+    wait_d2_to_d1 = PythonSensor(
+        task_id='wait_d2_to_d1',
+        python_callable=check_wait_time,
+        op_kwargs={'prev_task_id': 'd2_soft_drain', 'param_name': 'wait_hours_d2_to_d1'},
+        mode='reschedule', poke_interval=60
     )
 
     # --- D-1: Hard Drain ---
@@ -213,10 +240,11 @@ with DAG(
         op_kwargs={'force': True},
     )
 
-    wait_d1_to_d0 = TimeDeltaSensor(
-        task_id='wait_24h_d1_to_d0',
-        delta=timedelta(days=1),
-        mode='reschedule'
+    wait_d1_to_d0 = PythonSensor(
+        task_id='wait_d1_to_d0',
+        python_callable=check_wait_time,
+        op_kwargs={'prev_task_id': 'd1_hard_drain', 'param_name': 'wait_hours_d1_to_d0'},
+        mode='reschedule', poke_interval=60
     )
 
     # --- D-0: Final Shutdown & 완료 메일 ---
@@ -229,11 +257,7 @@ with DAG(
         task_id='d0_notify_complete',
         to='{{ params.receiver_email }}',
         subject='[D-0 Final] 클러스터 종료 프로세스 완료',
-        html_content="""
-        <h3>🔴 클러스터 종료 완료</h3>
-        <p>모든 노드의 Pod가 정리되었으며, 인프라 종료 준비가 끝났습니다.</p>
-        <p>이제 인스턴스 전원을 내리셔도 안전합니다.</p>
-        """
+        html_content="<h3>🔴 클러스터 종료 완료</h3><p>모든 인프라 종료 준비가 끝났습니다.</p>"
     )
 
     # --- 실행 순서 연결 ---

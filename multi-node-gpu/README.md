@@ -96,14 +96,23 @@ state = "/run/containerd"
 4. nvidia 런타임 Binary 경로도 추가
 ```bash
 # imports 설정이 들어갔는지 확인
-grep "imports" /etc/containerd/config.toml
-# default 런타임이 변경되었는지 확인
-grep "default_runtime_name" /etc/containerd/config.toml
+grep 'imports' /etc/containerd/config.toml
+# default 런타임을 nvidia로 변경
+sudo sed -i 's/default_runtime_name = "runc"/default_runtime_name = "nvidia"/g' /etc/containerd/config.toml
+# 또는 ansible gpu -i inventory/mycluster/inventory.ini -b -m shell -a "sed -i 's/default_runtime_name = \"runc\"/default_runtime_name = \"nvidia\"/g' /etc/containerd/config.toml"
+# default 런타임이 runc 에서 nvidia로 변경되었는지 확인
+grep 'default_runtime_name' /etc/containerd/config.toml
 # nvidia 런타임 Binary 경로 확인
-sudo containerd config dump | grep "nvidia-container-runtime"
-# BinaryName = "/usr/bin/nvidia-container-runtime"
-grep "BinaryName" /etc/containerd/config.toml
-# 결과 예시: BinaryName = "/usr/bin/nvidia-container-runtime"
+sudo containerd config dump | grep 'nvidia-container-runtime'
+# BinaryName = '/usr/bin/nvidia-container-runtime'
+
+# BinaryName 을 직접 추가
+sed -i 's@BinaryName = \"\"@BinaryName = \"/usr/bin/nvidia-container-runtime\"@g' /etc/containerd/config.toml
+# 또는 ansible gpu -i inventory/mycluster/inventory.ini -b -m shell -a "sed -i 's@BinaryName = \"\"@BinaryName = \"/usr/bin/nvidia-container-runtime\"@g' /etc/containerd/config.toml"
+
+# BinaryName = '/usr/bin/nvidia-container-runtime' 확인
+grep 'BinaryName' /etc/containerd/config.toml
+# 결과 예시: BinaryName = '/usr/bin/nvidia-container-runtime'
 ```
 
 **[주의: 이하 작업은 kubespray 설치 이후 진행]** 
@@ -158,7 +167,8 @@ spec:
 kubectl apply -f test-gpu.yaml
 kubectl logs -f gpu-test
 # 테스트용 포드 생성
-kubectl run gpu-test --rm -it --restart=Never --image=nvidia/cuda:12.2.0-base-ubuntu22.04 --limits=nvidia.com/gpu=1 -- nvidia-smi
+# kubectl run gpu-test --rm -it --restart=Never --image=nvidia/cuda:12.2.0-base-ubuntu22.04 --limits=nvidia.com/gpu=1 -- nvidia-smi
+# The error you're encountering happens because the --limits and --requests flags were removed from the kubectl run command in newer versions of Kubernetes.
 ```
 ```bash
 +-----------------------------------------------------------------------------------------+
@@ -314,9 +324,17 @@ sudo chown $(id -u):$(id -g) ~/.kube/config-<HOSTNAME>
 chmod 600 ~/.kube/config-<HOSTNAME>
 ```
 
-### 10. labels 설정
+### 10. labels 설정 (나중에 prometheus 에서 gpu 노드에서만 정보를 수집하기 위한 label과 동일)
+```bash
+# 1. 임시로 붙였던 accelerator=nvidia 라벨이 있다면 삭제 (마이너스 기호 주의)
+k label nodes gn01 gn02 accelerator-
 
+# 2. DCGM Exporter 표준 라벨로 새로 부여
+k label nodes gn01 gn02 nvidia.com/gpu.present=true
 
+# 3. 라벨 확인 (정상 부여 여부 체크)
+k get nodes -l nvidia.com/gpu.present=true
+```
 
 ## **3. kubeflow 설치**
 ### 1.권장 버전

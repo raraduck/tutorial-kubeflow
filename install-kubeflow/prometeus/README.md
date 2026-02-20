@@ -1,3 +1,57 @@
+# Prometheus와 Grafana Stack 을 설치하기 전에 GPU_storage 하위에 nfs용 PVC 목적폴더를 생성해서 연결해야합니다.
+```bash
+# Example
+# Helm repo 추가 (이미 했다면 skip)
+helm repo add nfs-subdir-external-provisioner \
+  https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
+helm repo update
+
+# 1. Kubeflow 사용자용 (User_storage)
+# 사용자들이 사용할 Jupyter Notebook 등의 데이터를 담는 용도입니다.
+helm install nfs-gpu-provisioner \
+  nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+  --namespace kube-system \
+  --set nfs.server=10.100.201.xx \
+  --set nfs.path=/nas_경로/GPU_storage/User_storage \
+  --set storageClass.name=gpu-storage \
+  --set storageClass.reclaimPolicy=Retain \
+  --set storageClass.defaultClass=false \
+  --set storageClass.archiveOnDelete=true \
+  --set storageClass.provisionerName=k8s-sigs.io/nfs-gpu-provisioner \
+  --set storageClass.allowVolumeExpansion=true
+
+# 2. Kubeflow 시스템용 (Kubeflow_storage)
+# Kubeflow 자체 컴포넌트(Pipelines, Metadata 등)가 사용하는 용도입니다. defaultClass=true로 설정하여 별도 지정이 없으면 이곳에 생성됩니다.
+helm install nfs-kubeflow-provisioner \
+  nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+  --namespace kube-system \
+  --set nfs.server=10.100.201.xx \
+  --set nfs.path=/nas_경로/GPU_storage/Kubeflow_storage \
+  --set storageClass.name=kubeflow-storage \
+  --set storageClass.reclaimPolicy=Retain \
+  --set storageClass.defaultClass=true \
+  --set storageClass.archiveOnDelete=true \
+  --set storageClass.provisionerName=k8s-sigs.io/nfs-kubeflow-provisioner \
+  --set storageClass.allowVolumeExpansion=true
+
+# 3. 모니터링용 (Monitoring_storage)
+# Prometheus와 Grafana의 데이터를 저장하는 용도입니다. 앞서 작성하신 prometheus-values.yaml에서 이 SC를 사용하도록 이름을 맞췄습니다.
+helm install nfs-monitoring-provisioner \
+  nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+  --namespace kube-system \
+  --set nfs.server=10.100.201.xx \
+  --set nfs.path=/nas_경로/GPU_storage/Monitoring_storage \
+  --set storageClass.name=monitoring-storage \
+  --set storageClass.reclaimPolicy=Retain \
+  --set storageClass.defaultClass=false \
+  --set storageClass.archiveOnDelete=true \
+  --set storageClass.provisionerName=k8s-sigs.io/nfs-monitoring-provisioner \
+  --set storageClass.allowVolumeExpansion=true
+
+# 4. 확인
+kubectl get sc
+```
+
 # 모니터링 스택 설치 전략
 > Kubeflow와 통합된 모니터링을 위해 kube-prometheus-stack (Prometheus Operator + Grafana)을 사용하겠습니다.
 
@@ -60,7 +114,7 @@ prometheus:
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: kubeflow-storage
+          storageClassName: monitoring-storage
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
@@ -127,7 +181,7 @@ grafana:
   # Persistence
   persistence:
     enabled: true
-    storageClassName: kubeflow-storage
+    storageClassName: monitoring-storage
     size: 10Gi
   
   # Ingress 또는 NodePort 설정
@@ -194,7 +248,7 @@ alertmanager:
     storage:
       volumeClaimTemplate:
         spec:
-          storageClassName: kubeflow-storage
+          storageClassName: monitoring-storage
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:

@@ -550,6 +550,24 @@ etcd는 설정값을 바이트(Byte) 단위로 받습니다.
 
 대부분의 Kubernetes(Kubespray/kubeadm) 배포판에서 etcd는 Static Pod로 실행되며, 설정 파일은 아래 경로에 있습니다.
 Kubespray 환경에서 etcd 용량을 8GB로 증설하려면 다음과 같이 systemd 환경 변수 파일을 수정해야 합니다.
+```bash
+# 🚨 주의: 재시작(Restart)은 절대 한 번에 하시면 안 됩니다!
+# 파일 변경은 한 번에 묶어서 하더라도, 서비스 재시작(systemctl restart etcd) 명령을 전체 대상(ctl) 그룹에 동시에 날리시면 절대 안 됩니다.
+
+# etcd는 3대 중 과반수(2대 이상)가 항상 살아있어야(Quorum) 쿠버네티스 클러스터가 유지됩니다. 만약 동시에 재시작 명령이 들어가면 클러스터 전체가 다운되는 장애가 발생합니다.
+
+# 따라서 재시작만큼은 아래처럼 노드를 특정해서 하나씩 순차적으로 진행하셔야 합니다.
+
+# ansible 로 한방에 처리
+ansible ctl -i inventory/mycluster/inventory.ini -b -m shell -a "sed -i 's/ETCD_QUOTA_BACKEND_BYTES=2147483648/ETCD_QUOTA_BACKEND_BYTES=8589934592/g' /etc/etcd.env"
+# 결과 조회
+ansible ctl -i inventory/mycluster/inventory.ini -b -m shell -a "cat /etc/etcd.env | grep QUOTA" 
+
+# etcd 재시작 적용(반드시 하나씩 적용!)
+ansible cn01 -i inventory/mycluster/inventory.ini -b -m shell -a "systemctl restart etcd"
+ansible cn02 -i inventory/mycluster/inventory.ini -b -m shell -a "systemctl restart etcd"
+ansible cn03 -i inventory/mycluster/inventory.ini -b -m shell -a "systemctl restart etcd"
+```
 ### 1. 백업 먼저 하기 (필수):
 ```bash
 sudo cp /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/manifests/etcd.yaml.bak
@@ -561,7 +579,7 @@ sudo cp /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/manifests/etcd.yaml.
 sudo vim /etc/etcd.env
 ```
 
-### 3. 옵션 추가 (kubeadm 경우):
+### 3. 옵션 추가:
 `spec.containers.command` 섹션을 찾아 아래 줄을 추가하세요. (순서는 상관없으나 보기 좋게 중간에 넣으세요.)
 ```yaml
 - --quota-backend-bytes=8589934592

@@ -255,6 +255,11 @@ EOF
 (venv) sudo sed -i '/ swap / s/^/#/' /etc/fstab
 ```
 ### 5.설정편집
+> etcd 용량을 늘리려면 작업 중이신 Kubespray 디렉토리 내의 inventory/mycluster/group_vars/all/etcd.yml 파일에 etcd_quota_backend_bytes: "8589934592" 한 줄을 추가해 두시는 것을 강력히 권장합니다.
+```yaml
+etcd_quota_backend_bytes: "8589934592"
+```
+
 * inventory/mycluster/group_vars/k8s_cluster/addons.yml
 ```bash
 # vim inventory/mycluster/group_vars/k8s_cluster/addons.yml
@@ -544,7 +549,7 @@ etcd는 설정값을 바이트(Byte) 단위로 받습니다.
 ## 2. 설정 파일 수정 (etcd.yaml)
 
 대부분의 Kubernetes(Kubespray/kubeadm) 배포판에서 etcd는 Static Pod로 실행되며, 설정 파일은 아래 경로에 있습니다.
-
+Kubespray 환경에서 etcd 용량을 8GB로 증설하려면 다음과 같이 systemd 환경 변수 파일을 수정해야 합니다.
 ### 1. 백업 먼저 하기 (필수):
 ```bash
 sudo cp /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/manifests/etcd.yaml.bak
@@ -552,15 +557,22 @@ sudo cp /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/manifests/etcd.yaml.
 
 ### 2. 파일 편집:
 ```bash
-sudo nano /etc/kubernetes/manifests/etcd.yaml
+# (kubeadm 경우) sudo vim /etc/kubernetes/manifests/etcd.yaml
+sudo vim /etc/etcd.env
 ```
 
-### 3. 옵션 추가:
+### 3. 옵션 추가 (kubeadm 경우):
 `spec.containers.command` 섹션을 찾아 아래 줄을 추가하세요. (순서는 상관없으나 보기 좋게 중간에 넣으세요.)
 ```yaml
 - --quota-backend-bytes=8589934592
 ```
-[예시 화면]
+[(kubespray 는 아래와 같은 화면)]
+```bash
+...
+ETCD_QUOTA_BACKEND_BYTES=8589934592
+...
+```
+[예시 화면 (kubeadm의 경우임)]
 ```yaml
 spec:
   containers:
@@ -574,6 +586,11 @@ spec:
 ```
 
 ## 3. 적용 및 재시작
+```bash
+sudo systemctl restart etcd
+# 정상기동확인
+sudo systemctl status etcd
+```
 Static Pod의 특성상, 파일을 저장하고 닫으면(Ctrl+O, Enter, Ctrl+X) kubelet이 변경 사항을 감지하고 자동으로 etcd 팟을 재시작합니다.
 
 - 약 1~2분 정도 소요될 수 있습니다.

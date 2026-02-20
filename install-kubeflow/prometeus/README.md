@@ -322,7 +322,7 @@ spec:
         app: dcgm-exporter
     spec:
       nodeSelector:
-        nvidia.com/gpu.present: "true"
+        nvidia.com/gpu.present: "true" # 이부분 중요
       hostNetwork: true
       hostPID: true
       containers:

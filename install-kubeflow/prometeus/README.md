@@ -820,7 +820,7 @@ grafana:
   grafana.ini:
     smtp:
       enabled: true
-      host: smtp.gmail.com:587
+      host: smtp.gmail.com:587 # smtp.office365.com:587
       user: your-email@gmail.com
       password: $__env{smtp-password}  # Secret에서 가져옴
       skip_verify: false

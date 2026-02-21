@@ -123,6 +123,12 @@ kubectl get pods -n istio-system | grep authservice
 ```
 ### Step 6: Knative Serving 설치 (KServe용)
 ```bash
+# 문제발생시 해결방법: KServe CRD 설치
+# 컨트롤러 버전에 맞는 KServe CRD를 클러스터에 적용해 주면 바로 해결됩니다. 이전 이벤트 로그에서 확인된 KServe 버전이 v0.15.0이므로, 터미널에서 아래 명령어를 실행하여 CRD를 직접 설치
+kubectl apply --server-side --force-conflicts -k "github.com/kserve/kserve/config/crd?ref=v0.15.0"
+```
+
+```bash
 # Knative CRDs
 kustomize build common/knative/knative-serving/overlays/gateways | kubectl apply -f -
 
@@ -280,6 +286,12 @@ kubectl get pods -n kubeflow | grep training-operator
 ```bash
 # 1. PyTorchJob CRD 설치 (필수)
 kubectl apply -f https://raw.githubusercontent.com/kubeflow/training-operator/v1.7.0/manifests/base/crds/kubeflow.org_pytorchjobs.yaml
+
+# 해결 방법: Training Operator CRD 설치
+# 이 문제도 누락된 CRD들을 큼지막하게 밀어 넣어주면 바로 해결됩니다. 현재 작업 중이신 터미널에서 아래 명령어를 실행하여 Training Operator의 모든 CRD를 강제(--server-side)로 설치해 주세요.
+kubectl apply --server-side --force-conflicts -k "github.com/kubeflow/training-operator/manifests/base/crds?ref=v1.7.0"
+# 가장 최신 버전의 PaddleJob CRD 하나만 콕 집어서 강제 설치
+kubectl apply --server-side --force-conflicts -f https://raw.githubusercontent.com/kubeflow/training-operator/master/manifests/base/crds/kubeflow.org_paddlejobs.yaml
 ```
 ### Step 21: Spark Operator (선택적 - 문제 발생 시 스킵)
 ```bash

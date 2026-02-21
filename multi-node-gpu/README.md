@@ -365,6 +365,9 @@ kustomize version
 1. Provisioner 설치: 가장 간편한 Rancher Local Path Provisioner를 설치하여 노드의 디스크를 사용하도록 설정합니다.
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml
+
+# 로컬 경로 (/mnt 하위 디스크) 를 잡아줘야함
+kubectl edit configmap local-path-config -n local-path-storage
 ```
 2. Default StorageClass로 지정 (매우 중요): 이 설정이 있어야 Kubeflow가 "아, 여기서 공간을 얻으면 되는구나" 하고 Pending을 풉니다.
 ```bash

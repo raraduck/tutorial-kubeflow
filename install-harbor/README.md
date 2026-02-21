@@ -290,8 +290,25 @@ sudo buildah bud -t 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0 .
 3. Harbor로 다이렉트 Push
 빌드가 완료되면, HTTPS(TLS) 검증을 무시하는 옵션(--tls-verify=false)을 주어 로컬 Harbor로 즉시 쏘아 올립니다.
 ```bash
+# 미리 로그인
+# sudo buildah login --tls-verify=false -u admin -p Harbor12345 10.246.246.89:30002
+# 또는 push 할때 인증
 sudo buildah push \
   --tls-verify=false \
   --creds admin:Harbor12345 \
   10.246.246.89:30002/kubeflow/jupyter-custom:v1.0
+```
+# 추가 이미지 업로드
+```bash
+# pull 시 버전 명시
+sudo buildah pull docker.io/library/nginx:1.27.4
+sudo buildah pull docker.io/library/busybox:1.37.0
+
+# 태그 변경
+sudo buildah tag docker.io/library/nginx:1.27.4 10.246.246.89:30002/library/nginx:1.27.4
+sudo buildah tag docker.io/library/busybox:1.37.0 10.246.246.89:30002/library/busybox:1.37.0
+
+# push
+sudo buildah push --tls-verify=false 10.246.246.89:30002/library/nginx:1.27.4
+sudo buildah push --tls-verify=false 10.246.246.89:30002/library/busybox:1.37.0
 ```

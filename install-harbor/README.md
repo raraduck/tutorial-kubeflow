@@ -193,6 +193,31 @@ sudo systemctl restart docker
 5. 적용 및 재시작: 우측 하단의 Apply & restart 버튼을 클릭합니다. 도커 엔진이 10~20초 정도 재시작되면서 설정이 완벽하게 적용됩니다.
 
 ## 2. 나머지 워커노드에서도 http로 pull 할 수 있도록 허용 필요(매우 중요)
+> 구 버전의 containerd (v2.2 이하) 정상동작 함
+```bash
+sudo vim /etc/containerd/config.toml
+```
+55~57번 줄을 아래처럼 교체
+```bash
+# ...
+    [plugins."io.containerd.cri.v1.images".registry]
+      config_path = ""
+
+      [plugins."io.containerd.cri.v1.images".registry.mirrors]
+        [plugins."io.containerd.cri.v1.images".registry.mirrors."10.246.246.89:30002"]
+          endpoint = ["http://10.246.246.89:30002"]
+
+      [plugins."io.containerd.cri.v1.images".registry.configs]
+        [plugins."io.containerd.cri.v1.images".registry.configs."10.246.246.89:30002".tls]
+          insecure_skip_verify = true
+# ...
+```
+재시작
+```bash
+sudo systemctl restart containerd
+sudo crictl pull 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0
+```
+
 > 최신 버전의 containerd (v1.5 이상) 사용의 경우
 > 
 > 이전 버전들처럼 config.toml 파일 하나에 모든 설정을 길게 늘어쓰는 방식 대신, config_path = "/etc/containerd/certs.d:/etc/docker/certs.d" 설정에 따라 별도의 디렉토리에서 레지스트리 설정 파일들을 깔끔하게 관리하는 최신 방식이 적용되어 있습니다.
@@ -210,7 +235,7 @@ sudo systemctl restart docker
 3. hosts.toml 파일 생성 및 편집
     - 방금 만든 폴더 안에 hosts.toml이라는 설정 파일을 생성합니다.
     ```bash
-    sudo nano /etc/containerd/certs.d/10.246.246.89:30002/hosts.toml
+    sudo vim /etc/containerd/certs.d/10.246.246.89:30002/hosts.toml
     ```
 4. HTTP 통신(TLS 무시) 내용 작성
     - 파일이 열리면 아래 내용을 그대로 복사하여 붙여넣습니다. (이 설정이 "HTTPS가 아니어도 이미지를 가져와라"라는 뜻입니다.)
@@ -250,4 +275,23 @@ docker login 10.246.246.89:30002
 
 # 3. 로컬 Harbor로 이미지 Push
 docker push 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0
+```
+## (Docker 없이 워커노드에서 바로 빌드하기)
+> 워커노드의 containerd 는 docker가 설치되면 충돌을 일으킴
+1. buildah를 이용한 서버 직접 빌드 가이드
+```bash
+sudo apt-get update
+sudo apt-get install -y buildah
+```
+2. Buildah로 이미지 빌드
+```bash
+sudo buildah bud -t 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0 .
+```
+3. Harbor로 다이렉트 Push
+빌드가 완료되면, HTTPS(TLS) 검증을 무시하는 옵션(--tls-verify=false)을 주어 로컬 Harbor로 즉시 쏘아 올립니다.
+```bash
+sudo buildah push \
+  --tls-verify=false \
+  --creds admin:Harbor12345 \
+  10.246.246.89:30002/kubeflow/jupyter-custom:v1.0
 ```

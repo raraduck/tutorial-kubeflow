@@ -177,6 +177,6 @@ kubectl create configmap jupyter-web-app-config-9c2fbg2gdc -n kubeflow \
   --from-file=spawner_ui_config.yaml=custom-spawner.yaml \
   -o yaml --dry-run=client | kubectl apply -f -
 
-# 2. 적용을 위해 Jupyter Web App 파드 재시작
-kubectl rollout restart deployment jupyter-web-app -n kubeflow
+# 2. 적용을 위해 Jupyter Web App 디플로이먼트 재시작
+kubectl rollout restart deployment jupyter-web-app-deployment -n kubeflow
 ``` 

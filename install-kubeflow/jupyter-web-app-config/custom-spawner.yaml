@@ -72,7 +72,7 @@ spawnerFormDefaults:
   # Workspace Volumes
   ################################################################
   workspaceVolume:
-    readOnly: false
+    readOnly: true  # <--- 핵심: true로 변경하여 UI 조작(Attach Existing 등) 불가 상태로 고정
     value:
       mount: /home/jovyan
       newPvc:
@@ -89,7 +89,7 @@ spawnerFormDefaults:
   # Data Volumes
   ################################################################
   dataVolumes:
-    readOnly: false
+    readOnly: true  # <--- 핵심: true로 변경하여 UI 조작(Attach Existing 등) 불가 상태로 고정
     value: []
 
   ################################################################

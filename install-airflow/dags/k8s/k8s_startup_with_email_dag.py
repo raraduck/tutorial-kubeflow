@@ -12,8 +12,10 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.email import EmailOperator
 from airflow.models.param import Param
+from airflow.models import Variable
 from kubernetes import client, config
 import logging
+import requests
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -62,12 +64,48 @@ def uncordon_all_nodes_func(**context):
             
     logger.info(f"Total {uncordoned_count} nodes have been uncordoned.")
 
+
+def send_teams_startup_notification(**context):
+    """Teams 알림 발송 (클러스터 복구 완료 알림)"""
+    # Airflow Variable에서 Webhook URL 가져오기
+    webhook_url = Variable.get("teams_webhook_url", default_var="")
+    if not webhook_url:
+        logger.error("Teams Webhook URL is missing.")
+        return 
+
+    # 복구 완료에 맞춘 녹색(28A745) MessageCard 설정
+    payload = {
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        "themeColor": "28A745",  # 녹색 계열 (정상/복구 완료)
+        "summary": "Kubernetes 클러스터 복구 완료",
+        "sections": [{
+            "activityTitle": "🟢 Kubernetes Cluster Startup Complete",
+            "activitySubtitle": f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "activityImage": "https://www.kubeflow.org/docs/images/logos/kubeflow.png",
+            "text": "모든 노드의 스케줄링 제한(Cordon)이 해제되었으며, 클러스터가 정상 상태로 복구되었습니다. 이제 새로운 워크로드를 실행할 수 있습니다.",
+            "facts": [
+                {"name": "Action", "value": "Uncordon All Nodes"},
+                {"name": "Status", "value": "Active (Schedulable)"},
+                {"name": "Admin", "value": "MLOps Team"}
+            ],
+            "markdown": True
+        }]
+    }
+    
+    try:
+        response = requests.post(webhook_url, json=payload)
+        response.raise_for_status()
+        logger.info("Teams startup notification sent successfully.")
+    except Exception as e:
+        logger.error(f"Failed to send Teams notification: {e}")
+
 # -------------------------------------------------------------------
 # DAG Definition
 # -------------------------------------------------------------------
 
 with DAG(
-    'k8s_cluster_startup_with_email_v1',
+    'k8s_cluster_startup_with_email_v26.02.0',
     default_args=default_args,
     description='Restore and Uncordon Kubernetes Cluster with Email Notifications',
     schedule_interval=None, # 수동 실행
@@ -128,5 +166,11 @@ with DAG(
         """
     )
 
+    # 3. Teams 알림 (완료) - 이 부분이 Operator 정의입니다.
+    notify_teams = PythonOperator(
+        task_id='send_teams_startup_notification',
+        python_callable=send_teams_startup_notification
+    )
+
     # --- 실행 순서 연결 ---
-    notify_startup_started >> uncordon_nodes >> notify_startup_completed
+    notify_startup_started >> uncordon_nodes >> notify_startup_completed >> notify_teams 

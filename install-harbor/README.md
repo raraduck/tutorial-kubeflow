@@ -60,6 +60,8 @@ Harbor는 쿠버네티스 클러스터 내부 또는 외부에 존재하는 '독
 ## 2. Harbor 전용 NFS Provisioner 설치 및 StorageClass 생성
 NAS에 /cloudhome/dwnusa/GPU_storage/Harbor_storage 디렉토리를 미리 생성해 두셨다고 가정하고, 이 경로만 바라보는 전용 Provisioner를 Helm으로 설치합니다.
 
+(이 경로는 registry 저장경로가 아닙니다. Harbor 메타데이터 저장용 DB 공간입니다.)
+
 이 Provisioner는 Default StorageClass에 영향을 주지 않는 독립적인 StorageClass(harbor-nfs-sc)를 생성합니다.
 ```bash
 # NFS Provisioner Helm 레포지토리 추가
@@ -67,7 +69,7 @@ helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/
 
 helm repo update
 
-# Harbor 전용 Provisioner 설치 (네임스페이스는 harbor로 통일하거나 kube-system 사용 가능)
+# Harbor 전용 Provisioner 설치 (네임스페이스는 harbor로 통일하거나 kube-system 사용 가능) 
 helm install harbor-nfs-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
     --namespace harbor \
     --set nfs.server=<NAS_IP_주소> \
@@ -136,6 +138,53 @@ database: # Harbor 메타데이터 저장
 redis: # 캐시 처리
   nodeSelector:
     kubernetes.io/hostname: cn20
+
+core:
+  nodeSelector:
+    kubernetes.io/hostname: cl01
+  tolerations: &harbor_tolerations  # YAML 앵커 기능을 사용하여 중복 입력을 줄일 수 있습니다.
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+# 만약 컨트롤노드에 설치해야한다면, 아래와 같이 toleration이 필요함
+#
+# jobservice:
+#   nodeSelector:
+#     kubernetes.io/hostname: cl01
+#   tolerations: *harbor_tolerations
+
+# registry:
+#   nodeSelector:
+#     kubernetes.io/hostname: cl01
+#   tolerations: *harbor_tolerations
+
+# trivy:
+#   nodeSelector:
+#     kubernetes.io/hostname: cl01
+#   tolerations: *harbor_tolerations
+
+# database:
+#   nodeSelector:
+#     kubernetes.io/hostname: cl01
+#   tolerations: *harbor_tolerations
+
+# redis:
+#   nodeSelector:
+#     kubernetes.io/hostname: cl01
+#   tolerations: *harbor_tolerations
+
+# portal:  # 포털도 cl01에 띄우려면 추가하세요.
+#   nodeSelector:
+#     kubernetes.io/hostname: cl01
+#   tolerations: *harbor_tolerations
+
+# nginx:   # Ingress 역할을 하는 nginx도 필요합니다.
+#   nodeSelector:
+#     kubernetes.io/hostname: cl01
+#   tolerations: *harbor_tolerations
 ```
 이렇게 구성하면 Harbor 배포 시, K8s가 harbor-nfs-sc StorageClass에 요청을 보내고, NFS Provisioner가 알아서 DB, Redis, Trivy 등을 위한 폴더를 Harbor_storage 하위에 만들고 볼륨을 할당해 줍니다. 사용자용 default 스토리지인 User_storage는 전혀 건드리지 않게 됩니다!
 
@@ -222,6 +271,9 @@ sudo crictl pull 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0
 > 
 > 이전 버전들처럼 config.toml 파일 하나에 모든 설정을 길게 늘어쓰는 방식 대신, config_path = "/etc/containerd/certs.d:/etc/docker/certs.d" 설정에 따라 별도의 디렉토리에서 레지스트리 설정 파일들을 깔끔하게 관리하는 최신 방식이 적용되어 있습니다.
 >
+> config_path = "/etc/containerd/certs.d:/etc/docker/certs.d" 이렇게 경로가 잡혀있으면 `:` 표기를 구분자로 인식하지 못하여 에러납니다.
+> `/etc/containerd/certs.d` 이 경로만 남기세요. (setup-harbor-registry.yaml 에 적용되어있음)
+>
 > 기존 config.toml 파일은 그대로 두시고, 아래 단계에 따라 설정 파일만 하나 만들기
 
 1. 최신 Containerd 방식의 Insecure Registry 설정
@@ -249,7 +301,11 @@ sudo crictl pull 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0
     ```bash
     sudo systemctl restart containerd
     ```
-
+5. 
+```bash
+# 위 설정을 모든 서버에 한번에 적용하기
+ansible-playbook -i inventory/mycluster/inventory.ini install-harbor/setup-harbor-registry.yaml -b # --limit cl01
+```
 ## 3. Dockerfile 작성
 원하시는 요구사항이 모두 반영된 Dockerfile을 작성합니다. 작업 디렉토리(예: ~/Workspace/custom-image/)를 만들고 아래 내용으로 Dockerfile을 저장하세요.
 ```dockerfile

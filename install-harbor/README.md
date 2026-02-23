@@ -349,6 +349,8 @@ sudo apt-get install -y buildah
 ```
 2. Buildah로 이미지 빌드
 ```bash
+# (만약 계속 실패하면 pull 우선 진행 아래는 retry 적용)
+# until sudo buildah pull ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-pytorch-cuda-full:v1.10.0; do echo "네트워크 끊김! 5초 뒤 다시 시도합니다..."; sleep 5; done
 sudo buildah bud -t 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0 .
 ```
 3. Harbor로 다이렉트 Push

@@ -306,6 +306,14 @@ sudo crictl pull 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0
 # 위 설정을 모든 서버에 한번에 적용하기
 ansible-playbook -i inventory/mycluster/inventory.ini install-harbor/setup-harbor-registry.yaml -b # --limit cl01
 ```
+
+6. crictl 로 pull 검증 (http 작동 확인)
+```bash
+# 아래 buildah 에서 push 해둔 nginx:1.27.4 을 pull 하는지 테스트합니다.
+sudo crictl pull 192.168.0.80:30002/library/nginx:1.27.4
+```
+
+
 ## 3. Dockerfile 작성
 원하시는 요구사항이 모두 반영된 Dockerfile을 작성합니다. 작업 디렉토리(예: ~/Workspace/custom-image/)를 만들고 아래 내용으로 Dockerfile을 저장하세요.
 ```dockerfile
@@ -354,7 +362,7 @@ sudo buildah push \
   --creds admin:Harbor12345 \
   10.246.246.89:30002/kubeflow/jupyter-custom:v1.0
 ```
-# 추가 이미지 업로드
+# 추가 이미지 업로드 (buildah 는 kubeflow의 containerd 에서 harbor registry 에 http 접근을 검증하지 못함)
 ```bash
 # pull 시 버전 명시
 sudo buildah pull docker.io/library/nginx:1.27.4
@@ -368,3 +376,5 @@ sudo buildah tag docker.io/library/busybox:1.37.0 10.246.246.89:30002/library/bu
 sudo buildah push --tls-verify=false 10.246.246.89:30002/library/nginx:1.27.4
 sudo buildah push --tls-verify=false 10.246.246.89:30002/library/busybox:1.37.0
 ```
+
+# 

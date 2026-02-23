@@ -45,7 +45,7 @@ spawnerFormDefaults:
   ################################################################
   cpu:
     readOnly: false
-    value: "0.5"
+    value: "4"
     limitFactor: "1.2"
 
   ################################################################
@@ -53,7 +53,7 @@ spawnerFormDefaults:
   ################################################################
   memory:
     readOnly: false
-    value: "1.0Gi"
+    value: "40.0Gi"
     limitFactor: "1.2"
 
   ################################################################
@@ -62,17 +62,17 @@ spawnerFormDefaults:
   gpus:
     readOnly: false
     value:
-      vendor: ""
+      vendor: "nvidia.com/gpu"
       vendors:
         - limitsKey: "nvidia.com/gpu"
           uiName: "NVIDIA"
-      num: "none"
+      num: "1"
 
   ################################################################
   # Workspace Volumes
   ################################################################
   workspaceVolume:
-    readOnly: true  # <--- 핵심: true로 변경하여 UI 조작(Attach Existing 등) 불가 상태로 고정
+    readOnly: false  # <--- 핵심: true로 변경하여 UI 조작(Attach Existing 등) 불가 상태로 고정
     value:
       mount: /home/jovyan
       newPvc:
@@ -81,15 +81,15 @@ spawnerFormDefaults:
         spec:
           resources:
             requests:
-              storage: 5Gi
+              storage: 500Gi
           accessModes:
-            - ReadWriteOnce
+            - ReadWriteMany
 
   ################################################################
   # Data Volumes
   ################################################################
   dataVolumes:
-    readOnly: true  # <--- 핵심: true로 변경하여 UI 조작(Attach Existing 등) 불가 상태로 고정
+    readOnly: false  # <--- 핵심: true로 변경하여 UI 조작(Attach Existing 등) 불가 상태로 고정
     value: []
 
   ################################################################

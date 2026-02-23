@@ -1,8 +1,36 @@
 # onboarding 에 필요한 설정들
 > - poddefault 에서 설정한 사항들을 configurations 에서 선택할 수 있도록 합니다.
 > - poddefault 는 이름단위로 네임스페이스에 할당되기 때문에 필요한 기능을 선택할 수 있습니다.
+## 0. profile 생성 (자원 할당 등)
+```yaml
+apiVersion: kubeflow.org/v1
+kind: Profile
+metadata:
+  name: gen01
+spec:
+  owner:
+    kind: User
+    name: dwnkim@neurophet.com  # 변경된 소유자
+  # 이 해당 네임스페이스 전체에 리소스가 명시되지 않은 파드는 절대 생성 불가라는 엄격한 규칙
+  resourceQuotaSpec: 
+    hard:
+        # cpu, memory 항목을 삭제합니다.
+        # 이 항목들이 없으면 파드 생성 시 리소스를 안 적어도 쿼터 에러가 나지 않습니다.
+        # 나중에 pvcviewer 생성할때 이것 때문에 pod 생성이 안됩니다.
+    #   cpu: "100"
+    #   memory: 100Gi
+    # CPU/Memory는 삭제하여 PVC Viewer 등 유틸리티 파드 생성 보장
+      persistentvolumeclaims: "10" # PVC 객체의 총 개수를 10개로 제한
+      requests.storage: "5Ti"       # 이 네임스페이스에서 쓰는 모든 볼륨 용량의 합을 5TB로 제한
+      # GPU 개수를 제한하여 특정 유저의 자원 독점 방지
+      limits.nvidia.com/gpu: "8"
+```
 
-## 1. local emphemeral cache 기능 활성화
+## 1. volume 에서 local-path 를 생성할수 있도록 하는게 좋음
+```yaml
+
+```
+## 1. local emphemeral cache 기능 활성화 (정지하면 삭제되어 캐시 재사용성 감소)
 ```yaml
 apiVersion: "kubeflow.org/v1alpha1"
 kind: PodDefault
@@ -26,7 +54,7 @@ spec:
             storageClassName: "local-path" # LVM과 연결된 프로비저너 이름
             resources:
               requests:
-                storage: 1.0Ti
+                storage: 500Gi
 ```
 ## 2. readonly NAS 데이터 선택 (ydb2, ydb3, researchdata)
 ```yaml

@@ -1,6 +1,43 @@
 # onboarding 에 필요한 설정들
 > - poddefault 에서 설정한 사항들을 configurations 에서 선택할 수 있도록 합니다.
 > - poddefault 는 이름단위로 네임스페이스에 할당되기 때문에 필요한 기능을 선택할 수 있습니다.
+## 0. 계정 생성 및 비밀번호 적용법
+```bash
+kubectl get configmap dex -n auth -o yaml # 이렇게 확인했는데 만약 config.yaml 부분 가독성이 안좋은상태라면
+
+# config.yaml 내용만 따로 추출
+kubectl get configmap dex -n auth -o jsonpath='{.data.config\.yaml}' > dex.yaml
+
+# 편집
+vim dex.yaml
+
+kubectl create configmap dex -n auth \
+  --from-file=config.yaml=dex.yaml \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# dex 재시작
+kubectl rollout restart deployment dex -n auth
+```
+### 1. 계정추가/비밀번호 변경
+- 비밀번호 해시 생성
+```bash
+# sudo apt install apache2-utils
+htpasswd -nbBC 12 "" test01 | tr -d ':\n'
+```
+```yaml
+staticPasswords:
+  - email: "user1@example.com"
+    hash: "$2y$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    username: "user1"
+    userID: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"   # uuid 아무거나
+  - email: "user2@example.com"          # 새 계정 추가
+    hash: "$2y$12$yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+    username: "user2"
+    userID: "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
+```
+
+
+
 ## 0. profile 생성 (자원 할당 등)
 ```yaml
 apiVersion: kubeflow.org/v1
@@ -131,6 +168,12 @@ spec:
 ```
 
 ## 2. timezone 등 환경설정 사항들 (기본으로 KST가 선택 및 체크)
+```bash
+# 편집
+k edit cm jupyter-web-app-config-9c2fbg2gdc -n kubeflow
+# 편집후 적용
+k rollout restart deploy jupyter-web-app-deployment -n kubeflow
+```
 > jupyter-web-app-configmap 에서 설정
 ```yaml
 ################################################################

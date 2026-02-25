@@ -67,31 +67,32 @@ spec:
 ```yaml
 
 ```
-## 1. local emphemeral cache 기능 활성화 (정지하면 삭제되어 캐시 재사용성 감소)
+## 1. local emphemeral cache 기능 활성화 
+> (정지하면 삭제되어 캐시 재사용성 감소)
 ```yaml
-apiVersion: "kubeflow.org/v1alpha1"
-kind: PodDefault
-metadata:
-  name: lvm-ephemeral-local
-  namespace: gen01
-spec:
-  desc: "High-Speed Data Volume (주의: 파드 종료 시 소멸 - ReadWrite)"
-  selector:
-    matchLabels:
-      lvm-ephemeral-local: "true"
-  volumeMounts:
-    - name: lvm-local
-      mountPath: /home/jovyan/data
-  volumes:
-    - name: lvm-local
-      ephemeral:
-        volumeClaimTemplate:
-          spec:
-            accessModes: [ "ReadWriteOnce" ]
-            storageClassName: "local-path" # LVM과 연결된 프로비저너 이름
-            resources:
-              requests:
-                storage: 500Gi
+# apiVersion: "kubeflow.org/v1alpha1"
+# kind: PodDefault
+# metadata:
+#   name: lvm-ephemeral-local
+#   namespace: gen01
+# spec:
+#   desc: "High-Speed Data Volume (주의: 파드 종료 시 소멸 - ReadWrite)"
+#   selector:
+#     matchLabels:
+#       lvm-ephemeral-local: "true"
+#   volumeMounts:
+#     - name: lvm-local
+#       mountPath: /home/jovyan/data
+#   volumes:
+#     - name: lvm-local
+#       ephemeral:
+#         volumeClaimTemplate:
+#           spec:
+#             accessModes: [ "ReadWriteOnce" ]
+#             storageClassName: "local-path" # LVM과 연결된 프로비저너 이름
+#             resources:
+#               requests:
+#                 storage: 500Gi
 ```
 ## 2. readonly NAS 데이터 선택 (ydb2, ydb3, researchdata)
 ```yaml

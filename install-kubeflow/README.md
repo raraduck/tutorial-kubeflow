@@ -317,6 +317,14 @@ helm install spark-operator spark-operator/spark-operator \
   --create-namespace \
   --set webhook.enable=true \
   --set sparkJobNamespace=default
+
+helm upgrade --install spark-operator spark-operator/spark-operator \
+  --namespace spark-operator \
+  --create-namespace \
+  --set rbac.create=true \
+  --set webhook.enable=true \
+  --set webhook.port=443 \
+  --set sparkJobNamespace=default
 ```
 
 ### Step 22: User Namespace 생성

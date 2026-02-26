@@ -339,6 +339,22 @@ docker login 10.246.246.89:30002
 
 # 3. 로컬 Harbor로 이미지 Push
 docker push 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0
+
+# 윈도우 환경에서는 아래 방법으로...
+# 1. buildkitd.toml 파일 생성 (Dockerfile과 같은 폴더에):
+# 2. 기존 builder 삭제 후 재생성:
+docker buildx create \
+  --name mybuilder \
+  --driver docker-container \
+  --config ./buildkitd.toml \
+  --use
+
+docker buildx inspect --bootstrap
+# 3. 빌드 & 푸시:
+docker buildx build \
+  --platform linux/amd64 \
+  -t 192.168.0.80:30002/kubeflow/codeserver-python-claude:v1.0.0 \
+  --push .
 ```
 ## (Docker 없이 워커노드에서 바로 빌드하기)
 > 워커노드의 containerd 는 docker가 설치되면 충돌을 일으킴

@@ -11,7 +11,15 @@ metadata:
   name: harbor-nas-pv
 spec:
   capacity:
-    storage: 1024Gi # Harbor에서 사용할 예상 최대 용량
+    storage: 50Ti # Harbor에서 사용할 예상 최대 용량
+  mountOptions:
+    - hard
+    - nointr
+    - rsize=1048576
+    - wsize=1048576
+    - timeo=600
+    - retrans=5
+    - nfsvers=3
   volumeMode: Filesystem
   accessModes:
     - ReadWriteMany # NAS(NFS)의 장점인 다중 노드 읽기/쓰기 모드 사용
@@ -340,8 +348,20 @@ docker login 10.246.246.89:30002
 # 3. 로컬 Harbor로 이미지 Push
 docker push 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0
 
-# 윈도우 환경에서는 아래 방법으로...
+# desktop-linux context에서 buildx 없이 바로 됨 (다만, insecure registry push를 하려면 Docker Desktop의 GUI 설정에서 따로 잡아줘야함)
+docker context use desktop-linux
+docker build \
+  -t 192.168.0.80:30002/kubeflow/jupyter-claude-pytorch-cuda:v1.0.0 .
+docker push 192.168.0.80:30002/kubeflow/jupyter-claude-pytorch-cuda:v1.0.0
+
+# 윈도우(default) 환경에서는 아래 방법으로...
 # 1. buildkitd.toml 파일 생성 (Dockerfile과 같은 폴더에):
+docker context use default
+docker context ls
+NAME            DESCRIPTION                               DOCKER ENDPOINT                             ERROR
+default *       Current DOCKER_HOST based configuration   npipe:////./pipe/docker_engine
+desktop-linux   Docker Desktop                            npipe:////./pipe/dockerDesktopLinuxEngine
+
 # 2. 기존 builder 삭제 후 재생성:
 docker buildx create \
   --name mybuilder \
@@ -363,6 +383,7 @@ docker buildx build \
 sudo apt-get update
 sudo apt-get install -y buildah
 ```
+
 2. Buildah로 이미지 빌드
 ```bash
 # (만약 계속 실패하면 pull 우선 진행 아래는 retry 적용)

@@ -1,0 +1,22 @@
+apiVersion: "kubeflow.org/v1alpha1"
+kind: PodDefault
+metadata:
+  name: shared-ydb3-ro
+  namespace: dwnkim # <--- 적용할 유저 네임스페이스로 변경하세요! (여러 곳이면 여러 번 배포)
+spec:
+  desc: "공용 데이터셋 연결 (YDB3 - ReadOnly)"
+  selector:
+    matchLabels:
+      shared-ydb3-ro: "true"
+  volumeMounts:
+    # 3. YDB3 마운트
+    - name: ydb3
+      mountPath: /home/jovyan/YDB3
+      readOnly: true
+  volumes:
+    # 실제 NFS 서버 정보 입력 (PV/PVC를 거치지 않고 직접 연결하여 충돌 방지)
+    - name: ydb3
+      nfs:
+        server: 192.168.0.200
+        path: /volume2/YDB3
+        readOnly: true

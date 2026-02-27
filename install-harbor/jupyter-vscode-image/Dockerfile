@@ -8,7 +8,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         gnupg \
         sudo \
-        git \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
@@ -33,11 +32,13 @@ RUN npm install -g @anthropic-ai/claude-code
 
 # ── 5. Python 패키지 ────────────────────────────────────────────────────────
 RUN pip install --no-cache-dir --upgrade "numpy>=2.0" && \
-    pip install --no-cache-dir pytorch_lightning tensorboard
+    pip install --no-cache-dir \
+        pytorch_lightning \
+        tensorboard \
+        jupyter-server-proxy
 
-# ── 6. entrypoint 스크립트 ──────────────────────────────────────────────────
-COPY start-notebook.sh /usr/local/bin/start-notebook.sh
-RUN chmod +x /usr/local/bin/start-notebook.sh
+# ── 6. jupyter-server-proxy 로 code-server 등록 ─────────────────────────────
+COPY jupyter_server_config.py /opt/conda/etc/jupyter/jupyter_server_config.py
 
 # ── 7. jovyan 환경 설정 ─────────────────────────────────────────────────────
 USER jovyan
@@ -48,10 +49,7 @@ RUN mkdir -p /home/jovyan/.claude \
 
 ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
 
-# Kubeflow가 code-server 이미지로 인식하도록 설정
 LABEL maintainer="neuropean" \
       base="jupyter-pytorch-cuda-full:v1.10.0" \
       node.version="20" \
       code-server.version="${CODE_SERVER_VERSION}"
-
-ENTRYPOINT ["/usr/local/bin/start-notebook.sh"]

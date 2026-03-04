@@ -68,13 +68,12 @@ RUN curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSIO
        python=3.12 \
     && /opt/conda/bin/conda clean -afy
 
-ENV PATH="/opt/conda/bin:${PATH}"
-
 # conda auto_activate_base 비활성화 (사용자가 직접 init)
-RUN conda config --set auto_activate_base false
+RUN /opt/conda/bin/conda config --set auto_activate_base false
 
 # ── 7. PyTorch 2.7.1 + CUDA 12.8 ────────────────────────────────────────────
 RUN pip3 install --no-cache-dir --break-system-packages \
+    --timeout=300 \
     torch==2.7.1 \
     torchvision \
     --index-url https://download.pytorch.org/whl/cu128
@@ -129,49 +128,52 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     setuptools==78.1.1
 
 # ── 9. MOTD (터미널 환경 안내) 설정 ─────────────────────────────────────────
-RUN cat > /etc/motd << 'EOF'
-╔══════════════════════════════════════════════════════════════════╗
-║           Neuropean AI Workstation - VSCode Server               ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Base    : nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04            ║
-║  Python  : 3.12 (system) / 3.12 (conda base)                    ║
-║  PyTorch : 2.7.1 + CUDA 12.8                                     ║
-║  Conda   : /opt/conda                                            ║
-╠══════════════════════════════════════════════════════════════════╣
-║  🐍 Conda 환경 초기화 (최초 1회)                                  ║
-║    conda init bash && source ~/.bashrc                           ║
-║                                                                  ║
-║  🔧 새 Conda 환경 생성                                            ║
-║    conda create -n myenv python=3.12                             ║
-║    conda activate myenv                                          ║
-║    pip install -r requirements.txt                               ║
-║                                                                  ║
-║  📦 설치된 주요 라이브러리                                         ║
-║    torch / torchvision / pytorch_lightning                       ║
-║    nnunetv2 / monai / SimpleITK / nibabel                        ║
-║    fastapi / uvicorn / pydantic                                  ║
-║    numpy / pandas / scipy / scikit-image                         ║
-║                                                                  ║
-║  🤖 Claude Code 사용                                              ║
-║    claude                                                        ║
-║                                                                  ║
-║  🔑 Git 설정                                                      ║
-║    git config --global user.name "이름"                           ║
-║    git config --global user.email "이메일"                        ║
-║                                                                  ║
-║  🏥 nnU-Net 환경 변수 설정 (DataVolume 경로에 맞게 지정)           ║
-║    export nnUNet_raw="/data/nnUNet_raw"                          ║
-║    export nnUNet_preprocessed="/data/nnUNet_preprocessed"        ║
-║    export nnUNet_results="/data/nnUNet_results"                  ║
-║    # ~/.bashrc 에 추가하면 영구 적용됩니다                         ║
-║                                                                  ║
-║  📊 GPU 상태 확인                                                  ║
-║    nvidia-smi                                                    ║
-║    python -c "import torch; print(torch.cuda.is_available())"   ║
-╚══════════════════════════════════════════════════════════════════╝
-EOF
+RUN printf '%s\n' \
+    '╔══════════════════════════════════════════════════════════════════╗' \
+    '║          Neuropean AI Workstation - VSCode Server                ║' \
+    '╠══════════════════════════════════════════════════════════════════╣' \
+    '║  Base    : nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04            ║' \
+    '║  Python  : 3.12 (system) / 3.12 (conda base)                     ║' \
+    '║  PyTorch : 2.7.1 + CUDA 12.8                                     ║' \
+    '║  Conda   : /opt/conda                                            ║' \
+    '╠══════════════════════════════════════════════════════════════════╣' \
+    '║  [Conda] 환경 초기화 (최초 1회)                                     ║' \
+    '║    conda init bash && source ~/.bashrc                           ║' \
+    '║                                                                  ║' \
+    '║  [Conda] 새 환경 생성                                              ║' \
+    '║    conda create -n myenv python=3.12                             ║' \
+    '║    conda activate myenv                                          ║' \
+    '║    pip install -r requirements.txt                               ║' \
+    '║                                                                  ║' \
+    '║  [Libs] 설치된 주요 라이브러리                                      ║' \
+    '║    torch / torchvision / pytorch_lightning                       ║' \
+    '║    nnunetv2 / monai / SimpleITK / nibabel                        ║' \
+    '║    fastapi / uvicorn / pydantic                                  ║' \
+    '║    numpy / pandas / scipy / scikit-image                         ║' \
+    '║                                                                  ║' \
+    '║  [Claude] Claude Code 사용                                        ║' \
+    '║    claude                                                        ║' \
+    '║                                                                  ║' \
+    '║  [Git] 초기 설정                                                  ║' \
+    '║    git config --global user.name "Your Name"                     ║' \
+    '║    git config --global user.email "you@example.com"              ║' \
+    '║                                                                  ║' \
+    '║  [nnU-Net] 환경 변수 설정 (DataVolume 경로에 맞게 지정)              ║' \
+    '║    export nnUNet_raw="/data/nnUNet_raw"                          ║' \
+    '║    export nnUNet_preprocessed="/data/nnUNet_preprocessed"        ║' \
+    '║    export nnUNet_results="/data/nnUNet_results"                  ║' \
+    '║    # ~/.bashrc 에 추가하면 영구 적용됩니다                           ║' \
+    '║                                                                  ║' \
+    '║  [GPU] 상태 확인                                                  ║' \
+    '║    nvidia-smi                                                    ║' \
+    '║    python -c "import torch; print(torch.cuda.is_available())"    ║' \
+    '╚══════════════════════════════════════════════════════════════════╝' \
+    > /etc/motd
 
 RUN echo 'cat /etc/motd' >> /etc/bash.bashrc
+
+# conda 명령만 전역에서 접근 가능하도록 심볼릭 링크
+RUN ln -s /opt/conda/bin/conda /usr/local/bin/conda
 
 # ── 10. Kubeflow 호환 jovyan 사용자 생성 ─────────────────────────────────────
 RUN if getent passwd 1000 > /dev/null 2>&1; then \
@@ -187,10 +189,78 @@ WORKDIR /home/jovyan
 
 RUN mkdir -p /home/jovyan/.claude \
     && echo '{"autoUpdates":false}' > /home/jovyan/.claude/settings.json \
-    && mkdir -p /home/jovyan/.local/share/code-server/extensions
+    && mkdir -p /home/jovyan/.local/share/code-server/extensions \
+    # JupyterLab 시작 디렉토리에 README.md 생성 (MOTD 대용)
+    && printf '%s\n' \
+       '# 🧠 Neuropean AI Workstation' \
+       '' \
+       '> **Base**: `nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04`  ' \
+       '> **Python**: 3.12 (system) / 3.12 (conda base)  ' \
+       '> **PyTorch**: 2.7.1 + CUDA 12.8  ' \
+       '> **Conda**: `/opt/conda`' \
+       '' \
+       '---' \
+       '' \
+       '## 🐍 Conda 환경' \
+       '' \
+       '```bash' \
+       '# 최초 1회 초기화' \
+       'conda init bash && source ~/.bashrc' \
+       '' \
+       '# 새 환경 생성' \
+       'conda create -n myenv python=3.12' \
+       'conda activate myenv' \
+       'pip install -r requirements.txt' \
+       '```' \
+       '' \
+       '## 📓 Jupyter 커널 등록' \
+       '' \
+       '```bash' \
+       'conda activate myenv' \
+       'pip install ipykernel' \
+       'python -m ipykernel install --user --name myenv' \
+       '```' \
+       '' \
+       '## 📦 설치된 주요 라이브러리' \
+       '' \
+       '| 분류 | 패키지 |' \
+       '|------|--------|' \
+       '| DL Framework | `torch` `torchvision` `pytorch_lightning` |' \
+       '| 의료 영상 | `nnunetv2` `monai` `SimpleITK` `nibabel` |' \
+       '| 데이터 | `numpy` `pandas` `scipy` `scikit-image` |' \
+       '| Web / API | `fastapi` `uvicorn` `pydantic` |' \
+       '' \
+       '## 🤖 Claude Code' \
+       '' \
+       '```bash' \
+       'claude' \
+       '```' \
+       '' \
+       '## 🗂️ nnU-Net 환경 변수' \
+       '' \
+       '```bash' \
+       'export nnUNet_raw="/data/nnUNet_raw"' \
+       'export nnUNet_preprocessed="/data/nnUNet_preprocessed"' \
+       'export nnUNet_results="/data/nnUNet_results"' \
+       '# ~/.bashrc 에 추가하면 영구 적용' \
+       '```' \
+       '' \
+       '## 🔧 Git 초기 설정' \
+       '' \
+       '```bash' \
+       'git config --global user.name "Your Name"' \
+       'git config --global user.email "you@example.com"' \
+       '```' \
+       '' \
+       '## 🖥️ GPU 상태 확인' \
+       '' \
+       '```bash' \
+       'nvidia-smi' \
+       'python -c "import torch; print(torch.cuda.is_available())"' \
+       '```' \
+       > /home/jovyan/README.md
 
-ENV PATH="/usr/bin:/usr/local/bin:/opt/conda/bin:${PATH}"
-ENV NB_PREFIX="/"
+ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
 
 ARG IMAGE_VERSION=v2.2.1
 LABEL maintainer="neuropean" \

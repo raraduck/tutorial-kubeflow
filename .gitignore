@@ -3,5 +3,5 @@ plugins
 logs
 config
 __pycache__
-tar
-tar.gz
+*.tar
+*.tar.gz

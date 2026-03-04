@@ -341,7 +341,18 @@ USER jovyan
 ```bash
 # 1. Dockerfile이 있는 디렉토리에서 이미지 빌드 (태그: v1.0)
 docker build -t 10.246.246.89:30002/kubeflow/jupyter-custom:v1.0 .
+```
+만약, 윈도우에서 push 가 되지 않으면?
+```bash
+ docker save 192.168.0.80:30002/kubeflow/vscode-claude:v2.1.0 -o vscode-claude-v2.1.0.tar.gz
+ # 이렇게 파일로 저장해서 scp로 harbor 서버로 옮긴 뒤에 buildah 로 push
+scp vscode-claude-v2.0.0.tar.gz neuromaster@192.168.0.80:workspace/
 
+buildah pull docker-archive:vscode-claude-v2.1.0.tar.gz
+
+buildah push --tls-verify=false   192.168.0.80:30002/kubeflow/vscode-claude:v2.1.0
+```
+```bash
 # 2. Harbor에 로그인 (admin / Harbor12345 입력)
 docker login 10.246.246.89:30002
 

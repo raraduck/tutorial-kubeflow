@@ -198,6 +198,12 @@ kubectl logs -f gpu-test
 ```
 
 ## **2. kubespray 설치**
+
+🎯 최적의 버전 스택 (2026년 기준)컴포넌트추천 버전선택 이유 및 비고
+- Kubespray (v2.25.x): Ubuntu 24.04 공식 지원 시작 버전, K8s 1.29 기본 탑재
+- Kubernetes (v1.29.x): Kubeflow 진영에서 가장 광범위하게 검증된(Validated) 안정화 버전
+- Kubeflow (v1.10): Nested DAG, 향상된 스케줄링 등 복잡한 파이프라인 처리에 유리
+
 ### 0. python version change
 ```bash
 sudo timedatectl set-timezone Asia/Seoul

@@ -137,10 +137,13 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     ipykernel \
     pytorch_lightning
 
-# ── 10. MOTD 설정 ────────────────────────────────────────────────────────────
-# /etc/motd 에 내용 작성 후,
-# /etc/profile.d/motd.sh 로 등록 → login shell 진입 시 항상 출력
-# (JupyterLab terminal, SSH, code-server terminal 모두 커버)
+# ── 10. MOTD + README 원본을 PVC 영향 없는 시스템 경로에 저장 ──────────────
+# /etc/motd         : 터미널 MOTD 텍스트
+# /etc/profile.d/   : login shell 진입 시 자동 실행
+# /etc/bash.bashrc  : non-login interactive shell (JupyterLab terminal) 에서도 실행
+# /etc/skel/README.md : PVC 마운트 전 홈 초기화 시 복사되는 템플릿 (선택적)
+# /opt/neuropean/README.md : entrypoint 스크립트가 매 시작 시 홈에 복사할 원본
+
 RUN printf '%s\n' \
     '╔══════════════════════════════════════════════════════════════════╗' \
     '║        Neuropean AI Workstation - JupyterLab Server              ║' \
@@ -187,37 +190,14 @@ RUN printf '%s\n' \
     '║    python -c "import torch; print(torch.cuda.is_available())"    ║' \
     '╚══════════════════════════════════════════════════════════════════╝' \
     > /etc/motd \
+    # login shell (SSH, bash -l)
     && echo 'cat /etc/motd' > /etc/profile.d/motd.sh \
-    && chmod +x /etc/profile.d/motd.sh
+    && chmod +x /etc/profile.d/motd.sh \
+    # non-login interactive shell (JupyterLab terminal)
+    && echo 'cat /etc/motd' >> /etc/bash.bashrc
 
-# ── 11. Kubeflow 호환 jovyan 사용자 생성 ─────────────────────────────────────
-RUN if getent passwd 1000 > /dev/null 2>&1; then \
-        usermod -l jovyan -d /home/jovyan -m $(getent passwd 1000 | cut -d: -f1); \
-    else \
-        useradd -m -s /bin/bash -u 1000 jovyan; \
-    fi \
-    && echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-
-# ── 12. jupyter-server-proxy로 code-server 등록 ─────────────────────────────
-COPY jupyter_server_config.py /etc/jupyter/jupyter_server_config.py
-
-# ── 13. jovyan 환경 설정 ─────────────────────────────────────────────────────
-USER jovyan
-WORKDIR /home/jovyan
-
-RUN mkdir -p /home/jovyan/.claude \
-    && echo '{"autoUpdates":false}' > /home/jovyan/.claude/settings.json \
-    && mkdir -p /home/jovyan/.local/share/code-server/extensions \
-    && python3 -m ipykernel install --user --name python3 --display-name "Python 3.12 (CUDA 12.8)" \
-    # .bashrc 명시적 생성 (non-login interactive shell 대비)
-    && touch /home/jovyan/.bashrc \
-    && echo 'cat /etc/motd' >> /home/jovyan/.bashrc \
-    # .bash_profile 에서 .bashrc 를 source (login shell 이 .bashrc 를 건너뛰는 경우 대비)
-    && printf '%s\n' \
-       '# source .bashrc from .bash_profile' \
-       '[[ -f ~/.bashrc ]] && source ~/.bashrc' \
-       > /home/jovyan/.bash_profile \
-    # JupyterLab 시작 디렉토리에 README.md 생성 (MOTD 대용)
+# README.md 원본을 PVC 영향 없는 경로에 저장
+RUN mkdir -p /opt/neuropean \
     && printf '%s\n' \
        '# 🧠 Neuropean AI Workstation' \
        '' \
@@ -285,7 +265,33 @@ RUN mkdir -p /home/jovyan/.claude \
        'nvidia-smi' \
        'python -c "import torch; print(torch.cuda.is_available())"' \
        '```' \
-       > /home/jovyan/README.md
+       > /opt/neuropean/README.md
+
+# ── 11. Kubeflow 호환 jovyan 사용자 생성 ─────────────────────────────────────
+RUN if getent passwd 1000 > /dev/null 2>&1; then \
+        usermod -l jovyan -d /home/jovyan -m $(getent passwd 1000 | cut -d: -f1); \
+    else \
+        useradd -m -s /bin/bash -u 1000 jovyan; \
+    fi \
+    && echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# ── 12. jupyter-server-proxy로 code-server 등록 ─────────────────────────────
+COPY jupyter_server_config.py /etc/jupyter/jupyter_server_config.py
+
+# ── 13. entrypoint 스크립트 ──────────────────────────────────────────────────
+# PVC 마운트 후 홈 디렉토리에 README.md 복사 (없을 때만)
+# jovyan 환경 설정도 여기서 초기화
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# ── 14. jovyan 환경 설정 ─────────────────────────────────────────────────────
+USER jovyan
+WORKDIR /home/jovyan
+
+RUN mkdir -p /home/jovyan/.claude \
+    && echo '{"autoUpdates":false}' > /home/jovyan/.claude/settings.json \
+    && mkdir -p /home/jovyan/.local/share/code-server/extensions \
+    && python3 -m ipykernel install --user --name python3 --display-name "Python 3.12 (CUDA 12.8)"
 
 ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
 ENV NB_PREFIX="/"
@@ -305,7 +311,7 @@ EXPOSE 8888
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8888/api || exit 1
 
-ENTRYPOINT ["tini", "--"]
+ENTRYPOINT ["tini", "--", "/usr/local/bin/entrypoint.sh"]
 CMD ["jupyter", "lab", \
      "--ip=0.0.0.0", \
      "--port=8888", \

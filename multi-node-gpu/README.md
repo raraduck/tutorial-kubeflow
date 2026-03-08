@@ -9,6 +9,12 @@
 - 호환성 (V100 & P100): V100과 P100은 세대가 다릅니다(Volta vs Pascal). 너무 최신 드라이버는 구형 아키텍처(P100)에서 예기치 않은 버그가 발생할 수 있습니다. 535버전은 두 카드를 모두 완벽하게 지원하는 검증된 버전입니다.
 - CUDA 버전: 535 드라이버는 CUDA 12.2까지 지원합니다. 이는 최신 PyTorch, TensorFlow 등을 구동하기에 충분합니다.
 - Server 패키지: 데스크탑용(nvidia-driver-535) 대신 서버용(-server) 패키지는 불필요한 그래픽 패키지(X11 관련) 의존성을 줄이고 연산(Compute)에 최적화되어 있습니다.
+> 다양한 GPU를 모두 커버하려면 570 드라이버를 추천합니다. 
+> ```
+> sudo apt install nvidia-driver-570-server nvidia-utils-570-server -y
+> ```
+> RTX 5000 Blackwell이 핵심 제약 조건입니다. Blackwell 아키텍처(50xx 시리즈)는 비교적 최신이라 구버전 드라이버에서 지원이 안 됩니다. 570은 Blackwell을 공식 지원하는 드라이버 중 안정성이 검증된 버전입니다.)
+
 ```bash
 # 2. NVIDIA 드라이버 설치
 # 설치 여부 확인
@@ -40,7 +46,7 @@ sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/con
 sudo nvidia-ctk runtime configure --runtime=containerd --set-as-default
 
 # 서비스 재시작
-sudo systemctl restart containerd
+# (아직 안됨, 아래 작업 더 진행해야함) sudo systemctl restart containerd
 ```
 > 만약, config.toml 파일만으로 설정을 완료하고싶을땐 아래와 같이 수정정
 * /etc/containerd/config.toml

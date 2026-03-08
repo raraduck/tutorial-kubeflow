@@ -5,46 +5,49 @@ NAS 볼륨을 쿠버네티스에서 바로 마운트하도록 nfs 타입의 PV�
 ## 1. PV (Persistent Volume) 생성
 NFS 서버의 IP 주소와 지정하신 경로를 입력해 줍니다.
 ```yaml
+# ============================================================
+# Harbor Registry 전용 PV/PVC (NAS NFS — Static 방식)
+# NAS: 192.168.0.200 (Synology)
+# 경로: /volume1/testfield/GPU_storage/K8s_storage/Harbor_registry
+# ============================================================
+
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: harbor-nas-pv
+  name: harbor-registry-pv
 spec:
   capacity:
-    storage: 50Ti # Harbor에서 사용할 예상 최대 용량
-  mountOptions:
-    - hard
-    - nointr
-    - rsize=1048576
-    - wsize=1048576
-    - timeo=600
-    - retrans=5
-    - nfsvers=3
+    storage: 10Ti                      # 실제 사용 예상치 (NFS는 강제되지 않음)
   volumeMode: Filesystem
   accessModes:
-    - ReadWriteMany # NAS(NFS)의 장점인 다중 노드 읽기/쓰기 모드 사용
+    - ReadWriteMany                    # NFS 다중 노드 접근
   persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - hard
+    - proto=tcp
+    - nfsvers=3                        # Synology NFSv4.1 확인 후 변경 가능
+    - rsize=131072                     # 128KB — 1GbE 최적값
+    - wsize=131072
+    - timeo=600
+    - retrans=3
   nfs:
-    server: 192.168.X.X # 실제 NAS(NFS) 서버의 IP 주소로 변경해주세요.
-    path: /cloudhome/dwnusa/GPU_storage/Local_registry
-```
+    server: 192.168.0.200
+    path: /volume1/testfield/GPU_storage/K8s_storage/Harbor_registry
 
-## 2. PVC (Persistent Volume Claim) 생성
-Harbor 설치 시 Helm 차트가 이 PVC를 사용하도록 이름을 일치시킵니다.
-```yaml
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: harbor-nas-pvc
-  namespace: harbor # Harbor를 설치할 네임스페이스
+  name: harbor-registry-pvc
+  namespace: harbor
 spec:
-  storageClassName: ""  # ★ 핵심: 빈 문자열로 설정하여 자동 StorageClass 주입 방지
+  storageClassName: ""                 # ★ 자동 StorageClass 주입 방지
   accessModes:
     - ReadWriteMany
   resources:
     requests:
-      storage: 1024Gi # PV와 동일하게 설정
-  volumeName: harbor-nas-pv # 위에서 만든 PV 이름을 명시적으로 지정하여 바인딩
+      storage: 10Ti                    # PV와 동일하게 설정
+  volumeName: harbor-registry-pv      # PV 명시적 지정 (정확한 바인딩)
 ```
 
 > ⚠️ NAS 사용 시 필수 체크포인트
@@ -77,7 +80,27 @@ helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/
 
 helm repo update
 
+helm install harbor-nfs-provisioner \
+  nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+  --namespace nfs-provisioner \
+  --set nfs.server=192.168.0.200 \
+  --set nfs.path=/volume1/testfield/GPU_storage/K8s_storage/Harbor_storage \
+  --set storageClass.name=harbor-nfs-sc \
+  --set storageClass.defaultClass=false \
+  --set storageClass.reclaimPolicy=Retain \
+  --set storageClass.archiveOnDelete=true
+
+# archiveOnDelete: false (기본값)
+# PVC 삭제 → NAS의 실제 디렉토리도 삭제 🗑️
+
+# archiveOnDelete: true
+# PVC 삭제 → 삭제하지 않고 이름 앞에 "archived-" 붙여서 보존 ✅
+
+# 예시:
+# harbor/harbor-database-pvc-a1b2c3/  →  archived-harbor-harbor-database-pvc-a1b2c3/
+
 # Harbor 전용 Provisioner 설치 (네임스페이스는 harbor로 통일하거나 kube-system 사용 가능) 
+
 helm install harbor-nfs-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
     --namespace harbor \
     --set nfs.server=<NAS_IP_주소> \
@@ -95,6 +118,7 @@ helm install harbor-nfs-provisioner nfs-subdir-external-provisioner/nfs-subdir-e
 Harbor는 컨테이너 이미지(registry) 외에도 데이터베이스(database), 캐시(redis), 취약점 스캐너(trivy) 등 여러 컴포넌트로 구성됩니다. 용량을 가장 많이 차지하는 **이미지 저장소(Registry)**를 지정하신 NAS에 연결하는 것이 핵심입니다.
 
 가장 기본적인 values.yaml 파일의 수정 예시입니다. 아래 내용을 파일로 저장(예: my-values.yaml)하여 사용하시면 됩니다.
+
 
 ```yaml
 # 1. Harbor 외부 접근 주소 설정 (필수)
@@ -147,17 +171,29 @@ redis: # 캐시 처리
   nodeSelector:
     kubernetes.io/hostname: cn20
 
-core:
-  nodeSelector:
-    kubernetes.io/hostname: cl01
-  tolerations: &harbor_tolerations  # YAML 앵커 기능을 사용하여 중복 입력을 줄일 수 있습니다.
-    - key: "node-role.kubernetes.io/control-plane"
-      operator: "Exists"
-      effect: "NoSchedule"
-    - key: "node-role.kubernetes.io/master"
-      operator: "Exists"
-      effect: "NoSchedule"
-# 만약 컨트롤노드에 설치해야한다면, 아래와 같이 toleration이 필요함
+# YAML 앵커는 표준 YAML 스펙 기능
+# x-node-config: &node_config
+#   nodeSelector:
+#     kubernetes.io/hostname: cn01
+
+# # 하지만 Helm은 values.yaml을 파싱할 때
+# # Go의 YAML 라이브러리를 사용하는데
+# # 이 라이브러리가 앵커/별칭을 지원하지 않음
+# nginx:
+#   <<: *node_config   # ← Helm에서 에러 또는 무시됨
+
+# core:
+#   nodeSelector:
+#     kubernetes.io/hostname: cl20
+#   tolerations: &harbor_tolerations  # YAML 앵커 기능을 사용하여 중복 입력을 줄일 수 있습니다.
+#     - key: "node-role.kubernetes.io/control-plane"
+#       operator: "Exists"
+#       effect: "NoSchedule"
+#     - key: "node-role.kubernetes.io/master"
+#       operator: "Exists"
+#       effect: "NoSchedule"
+# 
+# 아래와 같은 방식은 지원되지 않음
 #
 # jobservice:
 #   nodeSelector:
@@ -212,6 +248,19 @@ sudo chmod -R 777 GPU_storage/Local_registry
 # 2. 동적 프로비저닝 (DB, Redis 등) 경로
 sudo chmod -R 777 GPU_storage/Harbor_storage
 ```
+> 만약 ingress-nginx를 사용한다면, harbor-values.yaml 과 ingress-nginx-values.yaml 로 아래 명령을 사용하세요.
+```bash
+helm upgrade harbor harbor/harbor \
+  -n harbor \
+  -f harbor-values.yaml \
+  --wait \
+  --timeout 10m
+```
+> 적용 후 Harbor 접속 주소는 아래로 변경됩니다.
+```bash
+http://192.168.0.80:30002
+```
+
 
 # 이미지 레지스트리 실습
 ## 1. Docker Insecure Registry 설정 (★매우 중요)

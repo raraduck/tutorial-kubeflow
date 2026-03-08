@@ -1,0 +1,130 @@
+
+# ============================================================
+# Harbor values.yaml
+# - Registry 저장: NAS NFS (harbor-registry-pvc, Static PV)
+# - DB/Redis/Job: NAS NFS (harbor-nfs-sc, Dynamic)
+# - 모든 Pod: cn01 고정 (nodeSelector + tolerations)
+# - TLS: HTTP only (HTTPS는 KubeFlow 구축 시 한번에 전환)
+# - 접근: http://harbor.192.168.0.80.nip.io
+# ============================================================
+
+# ── 외부 접근 URL ─────────────────────────────────────────────
+externalURL: http://192.168.0.80:30002
+
+# ── 관리자 비밀번호 ───────────────────────────────────────────
+harborAdminPassword: "YOUR_PASSWORD_HERE"   # ← 직접 입력해주세요
+
+# ── 서비스 노출 방식 ──────────────────────────────────────────────
+expose:
+  type: nodePort
+  tls:
+    enabled: false
+  nodePort:
+    name: http
+    ports:
+      http:
+        nodePort: 30002 # 30000~32767 사이의 포트. externalURL의 포트와 일치해야 합니다.
+
+# ── 스토리지 설정 ─────────────────────────────────────────────
+persistence:
+  enabled: true
+  resourcePolicy: keep                     # helm uninstall 시 PVC 보존
+  persistentVolumeClaim:
+    registry:
+      existingClaim: harbor-registry-pvc   # Static PV (NAS Harbor_registry)
+      storageClass: ""
+      accessMode: ReadWriteMany
+      size: 10Ti
+    database:
+      storageClass: harbor-nfs-sc          # Dynamic (NAS Harbor_storage)
+      accessMode: ReadWriteOnce
+      size: 20Gi
+    redis:
+      storageClass: harbor-nfs-sc
+      accessMode: ReadWriteOnce
+      size: 5Gi
+    jobservice:
+      jobLog:
+        storageClass: harbor-nfs-sc
+        accessMode: ReadWriteOnce
+        size: 10Gi
+    trivy:
+      storageClass: harbor-nfs-sc
+      accessMode: ReadWriteOnce
+      size: 10Gi
+
+# ── cn01 고정 공통 설정 ───────────────────────────────────────
+# control-plane Taint 허용 + cn01 nodeSelector
+# 아래 컴포넌트 전체에 동일하게 적용
+
+nginx:
+  nodeSelector:
+    kubernetes.io/hostname: cn01
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+portal:
+  nodeSelector:
+    kubernetes.io/hostname: cn01
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+core:
+  nodeSelector:
+    kubernetes.io/hostname: cn01
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+jobservice:
+  nodeSelector:
+    kubernetes.io/hostname: cn01
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+registry:
+  nodeSelector:
+    kubernetes.io/hostname: cn01
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+trivy:
+  enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: cn01
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+database:
+  type: internal
+  internal:
+    nodeSelector:
+      kubernetes.io/hostname: cn01
+    tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+
+redis:
+  type: internal
+  internal:
+    nodeSelector:
+      kubernetes.io/hostname: cn01
+    tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+
+# ── 로그 레벨 ─────────────────────────────────────────────────
+logLevel: info

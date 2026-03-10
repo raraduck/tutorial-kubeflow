@@ -1,0 +1,230 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-availability-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  gpu-availability.json: |
+    {
+      "title": "GPU Availability by Node",
+      "uid": "gpu-availability",
+      "folderUid": "gpu-monitor",
+      "timezone": "Asia/Seoul",
+      "refresh": "30s",
+      "schemaVersion": 36,
+      "tags": ["gpu", "nvidia"],
+      "panels": [
+        {
+          "id": 1,
+          "title": "전체 보유 GPU",
+          "type": "stat",
+          "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": { "colorMode": "background", "graphMode": "none" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "fixed", "fixedColor": "blue" },
+              "unit": "short"
+            }
+          },
+          "targets": [{
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "expr": "count(DCGM_FI_DEV_GPU_UTIL)",
+            "legendFormat": "전체 GPU"
+          }]
+        },
+        {
+          "id": 2,
+          "title": "사용 중인 GPU",
+          "type": "stat",
+          "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": { "colorMode": "background", "graphMode": "none" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "fixed", "fixedColor": "red" },
+              "unit": "short"
+            }
+          },
+          "targets": [{
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "expr": "count(DCGM_FI_DEV_GPU_UTIL > 0) or vector(0)",
+            "legendFormat": "사용 중"
+          }]
+        },
+        {
+          "id": 3,
+          "title": "잔여 GPU",
+          "type": "stat",
+          "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": { "colorMode": "background", "graphMode": "none" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red",    "value": null },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "green",  "value": 5 }
+                ]
+              }
+            }
+          },
+          "targets": [{
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "expr": "count(DCGM_FI_DEV_GPU_UTIL == 0) or vector(0)",
+            "legendFormat": "잔여 GPU"
+          }]
+        },
+        {
+          "id": 4,
+          "title": "GPU 사용률 (전체 평균)",
+          "type": "stat",
+          "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": { "colorMode": "background", "graphMode": "none" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green",  "value": null },
+                  { "color": "yellow", "value": 50 },
+                  { "color": "red",    "value": 80 }
+                ]
+              }
+            }
+          },
+          "targets": [{
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "expr": "avg(DCGM_FI_DEV_GPU_UTIL)",
+            "legendFormat": "평균 사용률"
+          }]
+        },
+        {
+          "id": 5,
+          "title": "노드별 잔여 GPU",
+          "type": "bargauge",
+          "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "orientation": "vertical",
+            "reduceOptions": { "calcs": ["lastNotNull"] },
+            "displayMode": "gradient",
+            "text": {}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "max": 4,
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "#ef4444", "value": null },
+                  { "color": "#eab308", "value": 1 },
+                  { "color": "#84cc16", "value": 2 },
+                  { "color": "#22c55e", "value": 3 }
+                ]
+              }
+            }
+          },
+          "targets": [{
+            "refId": "A",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "expr": "count by (node) (DCGM_FI_DEV_GPU_UTIL == 0) or (count by (node) (DCGM_FI_DEV_GPU_UTIL) * 0)",
+            "legendFormat": "{{node}}",
+            "instant": true
+          }]
+        },
+        {
+          "id": 6,
+          "title": "노드별 GPU 상세 테이블",
+          "type": "table",
+          "gridPos": { "x": 0, "y": 14, "w": 24, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": {
+            "sortBy": [{ "displayName": "노드", "desc": false }],
+            "footer": { "show": false }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": { "align": "center" }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "잔여 GPU" },
+                "properties": [
+                  { "id": "custom.displayMode", "value": "color-background" },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        { "color": "#ef4444", "value": null },
+                        { "color": "#eab308", "value": 1 },
+                        { "color": "#84cc16", "value": 2 },
+                        { "color": "#22c55e", "value": 3 }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "count by (node) (DCGM_FI_DEV_GPU_UTIL == 0) or (count by (node) (DCGM_FI_DEV_GPU_UTIL) * 0)",
+              "legendFormat": "{{node}}",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "node": "노드",
+                  "Value #A": "잔여 GPU"
+                },
+                "excludeByName": {
+                  "Time": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "title": "노드별 GPU 사용률 추이",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 22, "w": 24, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100
+            }
+          },
+          "targets": [{
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "expr": "avg by (node) (DCGM_FI_DEV_GPU_UTIL)",
+            "legendFormat": "{{node}}"
+          }]
+        }
+      ],
+      "templating": { "list": [] }
+    }

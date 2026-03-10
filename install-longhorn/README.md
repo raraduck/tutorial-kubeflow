@@ -20,7 +20,10 @@ helm install longhorn longhorn/longhorn \
   --create-namespace \
   --set defaultSettings.defaultReplicaCount=1 \
   --set defaultSettings.storageOverProvisioningPercentage=100 \
-  --set persistence.defaultClassReplicaCount=1
+  --set persistence.defaultClassReplicaCount=1 \
+  --set persistence.volumeBindingMode=WaitForFirstConsumer \
+  --set defaultSettings.defaultDataLocality=strict-local \
+  --set persistence.defaultDataLocality=strict-local
 
 # 확인
 kubectl get pods -n longhorn-system

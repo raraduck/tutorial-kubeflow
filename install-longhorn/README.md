@@ -18,12 +18,16 @@ helm repo update
 helm install longhorn longhorn/longhorn \
   --namespace longhorn-system \
   --create-namespace \
-  --set defaultSettings.defaultReplicaCount=1 \
-  --set defaultSettings.storageOverProvisioningPercentage=100 \
-  --set persistence.defaultClassReplicaCount=1 \
+  --set defaultSettings.defaultDataPath="/mnt/Rancher_storage" \
+  --set defaultSettings.defaultReplicaCount=2 \
+  --set defaultSettings.storageOverProvisioningPercentage=150 \
+  --set persistence.defaultClassReplicaCount=2 \
   --set persistence.volumeBindingMode=WaitForFirstConsumer \
-  --set defaultSettings.defaultDataLocality=strict-local \
-  --set persistence.defaultDataLocality=strict-local
+  --set defaultSettings.dataLocality=best-effort \
+  --set defaultSettings.replicaAutoBalance=best-effort
+ 
+#   --set defaultSettings.defaultDataLocality=strict-local \
+#   --set persistence.defaultDataLocality=strict-local
 
 # 확인
 kubectl get pods -n longhorn-system

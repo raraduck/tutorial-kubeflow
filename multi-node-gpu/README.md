@@ -114,7 +114,7 @@ sudo containerd config dump | grep 'nvidia-container-runtime'
 # BinaryName = '/usr/bin/nvidia-container-runtime'
 
 # BinaryName 을 직접 추가
-sed -i 's@BinaryName = \"\"@BinaryName = \"/usr/bin/nvidia-container-runtime\"@g' /etc/containerd/config.toml
+sudo sed -i 's@BinaryName = \"\"@BinaryName = \"/usr/bin/nvidia-container-runtime\"@g' /etc/containerd/config.toml
 # 또는 ansible gpu -i inventory/mycluster/inventory.ini -b -m shell -a "sed -i 's@BinaryName = \"\"@BinaryName = \"/usr/bin/nvidia-container-runtime\"@g' /etc/containerd/config.toml"
 
 # BinaryName = '/usr/bin/nvidia-container-runtime' 확인

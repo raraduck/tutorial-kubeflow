@@ -18,14 +18,17 @@ helm repo update
 helm install longhorn longhorn/longhorn \
   --namespace longhorn-system \
   --create-namespace \
-  --set defaultSettings.defaultDataPath="/mnt/Rancher_storage" \
+  --set persistence.defaultClass=false \
   --set defaultSettings.defaultReplicaCount=2 \
   --set defaultSettings.storageOverProvisioningPercentage=150 \
   --set persistence.defaultClassReplicaCount=2 \
   --set persistence.volumeBindingMode=WaitForFirstConsumer \
-  --set defaultSettings.dataLocality=best-effort \
+  --set defaultSettings.replicaAutoBalance=best-effort \
+  --set defaultSettings.defaultDataLocality=best-effort \
+  --set persistence.defaultDataLocality=best-effort \
   --set defaultSettings.replicaAutoBalance=best-effort
  
+#   --set defaultSettings.defaultDataPath="/mnt/Rancher_storage" \
 #   --set defaultSettings.defaultDataLocality=strict-local \
 #   --set persistence.defaultDataLocality=strict-local
 

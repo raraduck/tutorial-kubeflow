@@ -357,6 +357,14 @@ loki:
       compaction_interval: 10m
       # delete_request_store: filesystem # 호환되지않아서 삭제!
 
+# ── Grafana 연동 비활성화 ─────────────────────────────────
+# loki-stack chart에는 Grafana가 기본으로 포함되어 있는데, 이미 kube-prometheus-stack으로 Grafana를 설치한 상태에서 loki-stack의 Grafana까지 뜨면 두 개의 Grafana가 충돌하거나 datasource 설정이 꼬일 수 있습니다.
+grafana:
+  enabled: false
+  sidecar:
+    datasources:
+      enabled: false
+
 # ── Promtail ─────────────────────────────────────────────
 promtail:
   enabled: true

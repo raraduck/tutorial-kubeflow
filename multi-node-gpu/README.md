@@ -103,12 +103,12 @@ state = "/run/containerd"
 4. nvidia 런타임 Binary 경로도 추가
 ```bash
 # imports 설정이 들어갔는지 확인
-grep 'imports' /etc/containerd/config.toml
+sudo grep 'imports' /etc/containerd/config.toml
 # default 런타임을 nvidia로 변경
 sudo sed -i 's/default_runtime_name = "runc"/default_runtime_name = "nvidia"/g' /etc/containerd/config.toml
 # 또는 ansible gpu -i inventory/mycluster/inventory.ini -b -m shell -a "sed -i 's/default_runtime_name = \"runc\"/default_runtime_name = \"nvidia\"/g' /etc/containerd/config.toml"
 # default 런타임이 runc 에서 nvidia로 변경되었는지 확인
-grep 'default_runtime_name' /etc/containerd/config.toml
+sudo grep 'default_runtime_name' /etc/containerd/config.toml
 # nvidia 런타임 Binary 경로 확인
 sudo containerd config dump | grep 'nvidia-container-runtime'
 # BinaryName = '/usr/bin/nvidia-container-runtime'
@@ -118,8 +118,26 @@ sudo sed -i 's@BinaryName = \"\"@BinaryName = \"/usr/bin/nvidia-container-runtim
 # 또는 ansible gpu -i inventory/mycluster/inventory.ini -b -m shell -a "sed -i 's@BinaryName = \"\"@BinaryName = \"/usr/bin/nvidia-container-runtime\"@g' /etc/containerd/config.toml"
 
 # BinaryName = '/usr/bin/nvidia-container-runtime' 확인
-grep 'BinaryName' /etc/containerd/config.toml
+sudo grep 'BinaryName' /etc/containerd/config.toml
 # 결과 예시: BinaryName = '/usr/bin/nvidia-container-runtime'
+
+# harbor config_path도 config.toml에 직접 추가
+sudo sed -i "0,/config_path = \"\"/s|config_path = \"\"|config_path = \"/etc/containerd/certs.d\"|" /etc/containerd/config.toml
+# 0,/패턴/ 은 첫 번째 매칭만 변경합니다. registry 섹션의 config_path가 transfer 섹션보다 먼저 나오므로 정확히 원하는 곳만 변경됩니다.
+sudo grep 'config_path' /etc/containerd/config.toml
+sudo containerd config dump | grep config_path
+    #   config_path = "/etc/containerd/certs.d"
+    # plugin_config_path = "/etc/nri/conf.d"
+    # config_path = "/etc/containerd/certs.d"
+
+# # 1. registry 섹션 (harbor용 - 변경해야 함)
+# [plugins."io.containerd.grpc.v1.cri".registry]
+#   config_path = ""
+
+# # 2. transfer 섹션 (건드리면 안 됨)
+# [plugins."io.containerd.transfer.v1.local"]
+#   config_path = ""
+
 ```
 
 **[주의: 이하 작업은 kubespray 설치 이후 진행]** 
@@ -135,7 +153,17 @@ sudo systemctl restart kubelet
 kubectl delete ds nvidia-device-plugin-daemonset -n kube-system
 
 # 잠시 대기 후 재배포
-kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.5/nvidia-device-plugin.yml
+# kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.5/nvidia-device-plugin.yml
+# 최신 버전으로 재설치 (helm 권장)
+helm repo add nvdp https://nvidia.github.io/k8s-device-plugin
+helm repo update
+
+helm upgrade -i nvdp nvdp/nvidia-device-plugin \
+  --namespace kube-system \
+  --version 0.17.1
+
+# GPU 확인
+kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable."nvidia\.com/gpu"
 
 # 로그 확인
 kubectl logs -n kube-system -l name=nvidia-device-plugin-ds

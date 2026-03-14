@@ -1,34 +1,27 @@
 ---
-- name: Configure Harbor via certs.d (Safe Method)
-  hosts: all
+- name: Configure Harbor and Nvidia Runtime
+  hosts: gpus
   become: yes
   tasks:
-    # 1. 기존의 잘못된 멀티 경로 설정을 단일 경로로 수정
-    - name: Change config_path to a single valid directory
-      replace:
-        path: /etc/containerd/config.toml
-        regexp: 'config_path = "/etc/containerd/certs.d:/etc/docker/certs.d"'
-        replace: 'config_path = "/etc/containerd/certs.d"'
-
-    # 2. Harbor용 certs.d 디렉토리 생성
+    # 1. Harbor용 certs.d 디렉토리 생성
     - name: Create certs.d directory for Harbor
       file:
         path: "/etc/containerd/certs.d/192.168.0.80:30002"
         state: directory
         mode: '0755'
 
-    # 3. 비보안 레지스트리 허용을 위한 hosts.toml 생성
+    # 2. 비보안 레지스트리 허용을 위한 hosts.toml 생성
     - name: Create hosts.toml for insecure registry
       copy:
         dest: "/etc/containerd/certs.d/192.168.0.80:30002/hosts.toml"
         content: |
           server = "http://192.168.0.80:30002"
-          
+
           [host."http://192.168.0.80:30002"]
             capabilities = ["pull", "resolve"]
             skip_verify = true
 
-    # 4. 변경사항 적용을 위해 containerd 재시작
+    # 6. 변경사항 적용을 위해 containerd 재시작
     - name: Restart containerd
       systemd:
         name: containerd

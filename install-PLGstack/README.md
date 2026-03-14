@@ -12,6 +12,18 @@ helm install prometheus-nfs-provisioner \
   --set storageClass.provisionerName=k8s-sigs.io/monitoring-nfs-provisioner \
   --set storageClass.allowVolumeExpansion=true
 
+helm install grafana-nfs-provisioner \
+  nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+  --namespace nfs-provisioner \
+  --set nfs.server=192.168.0.200 \
+  --set nfs.path=/volume1/testfield/GPU_storage/K8s_storage/Grafana_storage \
+  --set storageClass.name=grafana-nfs-sc \
+  --set storageClass.reclaimPolicy=Retain \
+  --set storageClass.defaultClass=false \
+  --set storageClass.archiveOnDelete=true \
+  --set storageClass.provisionerName=k8s-sigs.io/grafana-nfs-provisioner \
+  --set storageClass.allowVolumeExpansion=true
+
 # 확인
 kubectl get pods -n nfs-provisioner
 kubectl get storageclass
@@ -102,6 +114,7 @@ grafana:
       defaultDatasourceEnabled: true
       url: http://kube-prometheus-stack-prometheus:9090
 
+# Loki datasource는 kube-prometheus-stack의 Grafana에 직접 추가
   additionalDataSources:
     - name: Loki
       type: loki
@@ -211,6 +224,11 @@ serviceMonitor:
   enabled: true
   additionalLabels:
     release: kube-prometheus-stack
+  relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: exporter_pod
 
 nodeSelector:
   nvidia.com/gpu.present: "true"
@@ -226,7 +244,7 @@ service:
   type: ClusterIP
   clusterIP: None          # Headless Service로 변경 → node IP로 수집
 ```
-```bash
+```yaml
 # loki-values.yaml
 
 # ── Loki ─────────────────────────────────────────────────
@@ -262,6 +280,7 @@ loki:
 
 # ── Grafana 연동 비활성화 ─────────────────────────────────
 # kube-prometheus-stack의 Grafana datasource와 충돌 방지
+# loki-stack chart에는 Grafana가 기본으로 포함되어 있는데, 이미 kube-prometheus-stack으로 Grafana를 설치한 상태에서 loki-stack의 Grafana까지 뜨면 두 개의 Grafana가 충돌하거나 datasource 설정이 꼬일 수 있습니다.
 grafana:
   enabled: false
   sidecar:

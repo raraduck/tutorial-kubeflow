@@ -83,6 +83,19 @@ helm repo add nfs-subdir-external-provisioner \
   https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
 helm repo update
 
+
+helm install prometheus-nfs-provisioner \
+  nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
+  --namespace nfs-provisioner \
+  --set nfs.server=192.168.0.200 \
+  --set nfs.path=/volume1/testfield/GPU_storage/K8s_storage/Monitoring_storage \
+  --set storageClass.name=monitoring-nfs-sc \
+  --set storageClass.reclaimPolicy=Retain \
+  --set storageClass.defaultClass=false \
+  --set storageClass.archiveOnDelete=true \
+  --set storageClass.provisionerName=k8s-sigs.io/monitoring-nfs-provisioner \
+  --set storageClass.allowVolumeExpansion=true
+
 helm install grafana-nfs-provisioner \
   nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
   --namespace nfs-provisioner \
@@ -97,7 +110,7 @@ helm install grafana-nfs-provisioner \
 
 # 확인
 kubectl get pods -n nfs-provisioner
-kubectl get storageclass | grep grafana-nfs-sc
+kubectl get storageclass
 ```
 
 ---
@@ -114,6 +127,7 @@ helm repo update
 # prometheus-stack-values.yaml
 prometheus:
   prometheusSpec:
+    enableAdminAPI: true
     retention: 90d
     retentionSize: "40GB"
     nodeSelector:
@@ -200,6 +214,7 @@ grafana:
       enabled: true              # ← 추가
       searchNamespace: monitoring # ← 추가
 
+# Loki datasource는 kube-prometheus-stack의 Grafana에 직접 추가
   additionalDataSources:
     - name: Loki
       type: loki

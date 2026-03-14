@@ -35,6 +35,7 @@ kubectl get storageclass
 # ── Prometheus ───────────────────────────────────────────
 prometheus:
   prometheusSpec:
+    enableAdminAPI: true
     retention: 90d
     retentionSize: "40GB"
     nodeSelector:
@@ -244,6 +245,10 @@ service:
   type: ClusterIP
   clusterIP: None          # Headless Service로 변경 → node IP로 수집
 ```
+
+# cn01에서 권한 변경
+sudo chown -R 10001:10001 /mnt/backup/monitoring/loki
+
 ```yaml
 # loki-values.yaml
 

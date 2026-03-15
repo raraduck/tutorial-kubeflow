@@ -20,6 +20,12 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout tls.key -out tls.crt \
   -subj "/CN=kubeflow.local/O=kubeflow" \
   -addext "subjectAltName=DNS:kubeflow.local,DNS:*.kubeflow.local,IP:192.168.0.80"
+
+# Secret 생성
+kubectl create secret tls kubeflow-tls-cert \
+  --cert=tls.crt \
+  --key=tls.key \
+  -n istio-system
 ```
 ### 각 옵션 설명:
 
@@ -100,7 +106,7 @@ spec:
       protocol: HTTP
 ```
 ### HTTPS 추가된 Gateway 설정:
-```bash
+```yaml
 apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:

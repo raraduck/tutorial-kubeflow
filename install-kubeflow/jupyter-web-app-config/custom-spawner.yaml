@@ -20,15 +20,14 @@ spawnerFormDefaults:
     value: IfNotPresent
 
   image:
-    value: 192.168.0.80:30002/kubeflow/jupyter-vscode:v2.0.0
+    value: 192.168.0.80:30002/kubeflow/jupyter-v2.2:3
     options:
-      - 192.168.0.80:30002/kubeflow/jupyter-vscode:v2.0.0
-      - 192.168.0.80:30002/kubeflow/jupyter-vscode:v1.0.0
+      - 192.168.0.80:30002/kubeflow/jupyter-v2.2:3
   
   imageGroupOne:
-    value: 192.168.0.80:30002/kubeflow/vscode-claude:v1.0.0
+    value: 192.168.0.80:30002/kubeflow/vscode-v2.2:2
     options:
-      - 192.168.0.80:30002/kubeflow/vscode-claude:v1.0.0
+      - 192.168.0.80:30002/kubeflow/vscode-v2.2:2
       
 
   ################################################################
@@ -72,7 +71,7 @@ spawnerFormDefaults:
         spec:
           resources:
             requests:
-              storage: 500Gi
+              storage: 400Gi
           accessModes:
             - ReadWriteMany
 
@@ -81,19 +80,30 @@ spawnerFormDefaults:
   ################################################################
   dataVolumes:
     readOnly: false # <--- 핵심: true로 변경하여 UI 조작(Attach Existing 등) 불가 상태로 고정
-    value: []
-#       - value:
-#           mount: /home/jovyan/data
-#           newPvc:
-#             metadata:
-#               name: "{notebook-name}-lvm-data"
-#             spec:
-#               accessModes:
-#                 - ReadWriteOnce
-#               storageClassName: "local-path" # LVM 스토리지 클래스
-#               resources:
-#                 requests:
-#                   storage: 500Gi
+    value:
+      - mount: /home/jovyan/data
+        newPvc:
+          metadata:
+            name: "{notebook-name}-data"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 500Gi
+            storageClassName: longhorn
+      # - value:
+      #     mount: /home/jovyan/data
+      #     newPvc:
+      #       metadata:
+      #         name: "{notebook-name}-lvm-data"
+      #       spec:
+      #         accessModes:
+      #           - ReadWriteOnce
+      #         storageClassName: "local-path" # LVM 스토리지 클래스
+      #         resources:
+      #           requests:
+      #             storage: 500Gi
   ################################################################
   # Affinity (GPU 노드 선택 기능)
   ################################################################

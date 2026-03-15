@@ -1,11 +1,19 @@
 # jupyter 생성 화면에서 필요한 튜닝 작업
 ```bash
+
 kubectl edit configmap jupyter-web-app-config-<Random Hash> -n kubeflow # 수정 대상 configmap
 ```
 ```bash
 kubectl rollout restart deployment jupyter-web-app-deployment -n kubeflow # 수정후 재시작 적용
 ```
 ## 1. custom image 선택할 수 있도록 하기
+```bash
+# ConfigMap으로 직접 생성/업데이트
+kubectl create configmap jupyter-web-app-config-<Random Hash> \
+  -n kubeflow \
+  --from-file=spawnerFormDefaults.yaml=custom-spawner.yaml \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
 
 ```yaml
 ...

@@ -27,9 +27,9 @@ helm install longhorn longhorn/longhorn \
   --set defaultSettings.defaultDataLocality=best-effort \
   --set persistence.defaultDataLocality=best-effort \
   --set defaultSettings.replicaAutoBalance=best-effort \
-  --set persistence.storageClassName=local-ssd
- 
-#   --set defaultSettings.defaultDataPath="/mnt/Rancher_storage" \
+  --set persistence.storageClassName=local-ssd \
+  --set defaultSettings.defaultDataPath="/mnt/Rancher_storage"
+  
 #   --set defaultSettings.defaultDataLocality=strict-local \
 #   --set persistence.defaultDataLocality=strict-local
 

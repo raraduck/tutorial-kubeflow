@@ -123,8 +123,10 @@ sudo grep 'BinaryName' /etc/containerd/config.toml
 
 # harbor config_path도 config.toml에 직접 추가
 sudo sed -i "0,/config_path = \"\"/s|config_path = \"\"|config_path = \"/etc/containerd/certs.d\"|" /etc/containerd/config.toml
+sudo sed -i "0,/config_path = \"\"/s|config_path = \"\"|config_path = \"/etc/containerd/certs.d\"|" /etc/containerd/conf.d/99-nvidia.toml
 # 0,/패턴/ 은 첫 번째 매칭만 변경합니다. registry 섹션의 config_path가 transfer 섹션보다 먼저 나오므로 정확히 원하는 곳만 변경됩니다.
 sudo grep 'config_path' /etc/containerd/config.toml
+sudo grep 'config_path' /etc/containerd/conf.d/99-nvidia.toml
 sudo containerd config dump | grep config_path
     #   config_path = "/etc/containerd/certs.d"
     # plugin_config_path = "/etc/nri/conf.d"

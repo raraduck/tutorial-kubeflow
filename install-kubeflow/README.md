@@ -19,16 +19,16 @@ helm repo add nfs-subdir-external-provisioner \
 helm repo update
 
 # Kubeflow 사용자용 provisioner 설치
-helm install nfs-gpu-provisioner \
+helm install nfs-nas-provisioner \
   nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
   --namespace kube-system \
   --set nfs.server=192.168.0.200 \
-  --set nfs.path=/volume1/testfield/GPU_storage \
-  --set storageClass.name=gpu-storage \
+  --set nfs.path=/volume1/testfield/GPU_storage/K8s_storage/Users_storage \
+  --set storageClass.name=global-nas-sc \
   --set storageClass.reclaimPolicy=Retain \
   --set storageClass.defaultClass=false \
   --set storageClass.archiveOnDelete=true \
-  --set storageClass.provisionerName=k8s-sigs.io/nfs-gpu-provisioner \
+  --set storageClass.provisionerName=k8s-sigs.io/nfs-nas-provisioner \
   --set storageClass.allowVolumeExpansion=true
 
 # Kubeflow 시스템용 provisioner 설치
@@ -36,8 +36,8 @@ helm install nfs-kubeflow-provisioner \
   nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
   --namespace kube-system \
   --set nfs.server=192.168.0.200 \
-  --set nfs.path=/volume1/testfield/Kubeflow_storage \
-  --set storageClass.name=kubeflow-storage \
+  --set nfs.path=/volume1/testfield/GPU_storage/K8s_storage/Kubeflow_storage \
+  --set storageClass.name=kubeflow-nfs-sc \
   --set storageClass.reclaimPolicy=Retain \
   --set storageClass.defaultClass=true \
   --set storageClass.archiveOnDelete=true \
@@ -323,7 +323,7 @@ helm upgrade --install spark-operator spark-operator/spark-operator \
   --create-namespace \
   --set rbac.create=true \
   --set webhook.enable=true \
-  --set webhook.port=443 \
+  --set webhook.port=2443 \
   --set sparkJobNamespace=default
 ```
 

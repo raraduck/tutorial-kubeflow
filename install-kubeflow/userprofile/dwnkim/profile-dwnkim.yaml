@@ -11,4 +11,4 @@ spec:
 #       cpu: "100"
 #       memory: 100Gi
       persistentvolumeclaims: "20"
-      requests.nvidia.com/gpu: "10"
+      requests.nvidia.com/gpu: "8"

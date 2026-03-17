@@ -189,3 +189,56 @@ NodePort로 외부 접근 시 Kubeflow의 Istio sidecar가 트래픽을 차단�
 ```
 # Istio 환경에서 외부 접근이 안 될 경우 port-forward로 대체
 kubectl port-forward svc/argo-server -n kubeflow 2746:2746
+
+
+# Argo 네임스페이스 세팅
+```bash
+kubectl create serviceaccount argo -n argo
+```
+- RBAC 설정
+```yaml
+# argo-rbac-binding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-server-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "events", "pods", "pods/exec", "pods/log", "secrets", "serviceaccounts"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list"]
+- apiGroups: ["argoproj.io"]
+  resources: ["eventsources", "sensors", "workflows", "workfloweventbindings", "workflowtemplates", "cronworkflows", "clusterworkflowtemplates"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argo-server-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argo-server-role
+subjects:
+- kind: ServiceAccount
+  name: argo        # argo-server → argo
+  namespace: argo   # kubeflow → argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argo-default-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argo-server-role
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: argo
+```
+```bash
+kubectl apply -f argo-rbac-binding.yaml
+```

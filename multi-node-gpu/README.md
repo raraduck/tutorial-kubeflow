@@ -13,6 +13,7 @@
 > 다양한 GPU를 모두 커버하려면 570 드라이버를 추천합니다. 
 > ```
 > sudo apt install nvidia-driver-570-server nvidia-utils-570-server -y
+> sudo apt install nvidia-driver-570-server-open nvida-utils-570-server -y
 > ```
 > RTX 5000 Blackwell이 핵심 제약 조건입니다. Blackwell 아키텍처(50xx 시리즈)는 비교적 최신이라 구버전 드라이버에서 지원이 안 됩니다. 570은 Blackwell을 공식 지원하는 드라이버 중 안정성이 검증된 버전입니다.)
 

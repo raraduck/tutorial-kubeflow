@@ -36,7 +36,13 @@ helm install longhorn longhorn/longhorn \
 # 확인
 kubectl get pods -n longhorn-system
 ```
-
+> 수정을 원할땐
+```bash
+helm upgrade longhorn longhorn/longhorn \
+  --namespace longhorn-system \
+  --reuse-values \
+  --set defaultSettings.storageOverProvisioningPercentage=200
+```
 ---
 
 ### 각 노드 디스크 등록

@@ -39,7 +39,7 @@ prometheus:
     retention: 90d
     retentionSize: "40GB"
     nodeSelector:
-      kubernetes.io/hostname: cn01
+      kubernetes.io/hostname: gn132
     tolerations:
       - key: "node-role.kubernetes.io/control-plane"
         operator: "Exists"
@@ -75,7 +75,7 @@ grafana:
   adminPassword: "Grafana123!@#"
 
   nodeSelector:
-    kubernetes.io/hostname: cn01
+    kubernetes.io/hostname: gn131
   tolerations:
     - key: "node-role.kubernetes.io/control-plane"
       operator: "Exists"
@@ -181,7 +181,7 @@ alertmanager:
     nodePort: 30903
   alertmanagerSpec:
     nodeSelector:
-      kubernetes.io/hostname: cn01
+      kubernetes.io/hostname: gn131
     tolerations:
       - key: "node-role.kubernetes.io/control-plane"
         operator: "Exists"
@@ -277,7 +277,7 @@ loki:
       filesystem:
         directory: /data/loki/chunks
     limits_config:
-      retention_period: 365d
+      retention_period: 1095d
     compactor:
       working_directory: /data/loki/compactor
       retention_enabled: true

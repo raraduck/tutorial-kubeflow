@@ -89,3 +89,47 @@ kubectl get pods -w
 - pyspark-pi-test-driver (Running -> Completed)
 - pyspark-pi-test-exec-1, exec-2 (Running -> Terminated)
 - 위 과정이 보이면 Spark Operator와 권한 설정은 완벽한 상태입니다.
+
+## cluster role and binding
+### 1. spark-operator-controller 용 ClusterRole 생성
+kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spark-operator-controller-role
+rules:
+- apiGroups: ["sparkoperator.k8s.io"]
+  resources: ["sparkapplications", "sparkapplications/status", "scheduledsparkapplications", "scheduledsparkapplications/status"]
+  verbs: ["*"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["*"]
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "persistentvolumeclaims", "events"]
+  verbs: ["*"]
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+EOF
+
+### 2. ClusterRoleBinding 생성
+kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spark-operator-controller-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spark-operator-controller-role
+subjects:
+- kind: ServiceAccount
+  name: spark-operator-controller
+  namespace: kubeflow
+- kind: ServiceAccount
+  name: spark-operator-webhook
+  namespace: kubeflow
+EOF
+
+# 3. Pod 재시작
+kubectl rollout restart deployment spark-operator-controller spark-operator-webhook -n kubeflow

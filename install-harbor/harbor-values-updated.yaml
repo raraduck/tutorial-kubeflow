@@ -1,0 +1,96 @@
+# ============================================================
+# Harbor values.yaml
+# - Registry 저장: NAS NFS (harbor-registry-pvc, Static PV)
+# - DB/Redis/Job: NAS NFS (harbor-nfs-sc, Dynamic)
+# - 모든 Pod: gn131 고정 (nodeSelector) ← cn01에서 변경
+# - TLS: HTTP only (HTTPS는 KubeFlow 구축 시 한번에 전환)
+# - 접근: http://harbor.192.168.0.80.nip.io
+# ============================================================
+
+# ── 외부 접근 URL ─────────────────────────────────────────────
+externalURL: http://192.168.0.80:30002
+
+# ── 관리자 비밀번호 ───────────────────────────────────────────
+harborAdminPassword: "YOUR_PASSWORD_HERE" # ← 직접 입력해주세요
+
+# ── 서비스 노출 방식 ──────────────────────────────────────────────
+expose:
+  type: nodePort
+  tls:
+    enabled: false
+  nodePort:
+    name: http
+    ports:
+      http:
+        nodePort: 30002
+
+# ── 스토리지 설정 ─────────────────────────────────────────────
+persistence:
+  enabled: true
+  resourcePolicy: keep
+  persistentVolumeClaim:
+    registry:
+      existingClaim: harbor-registry-pvc
+      storageClass: ""
+      accessMode: ReadWriteMany
+      size: 10Ti
+    database:
+      storageClass: harbor-nfs-sc
+      accessMode: ReadWriteOnce
+      size: 20Gi
+    redis:
+      storageClass: harbor-nfs-sc
+      accessMode: ReadWriteOnce
+      size: 5Gi
+    jobservice:
+      jobLog:
+        storageClass: harbor-nfs-sc
+        accessMode: ReadWriteOnce
+        size: 10Gi
+    trivy:
+      storageClass: harbor-nfs-sc
+      accessMode: ReadWriteOnce
+      size: 10Gi
+
+# ── gn131 고정 공통 설정 ───────────────────────────────────────
+# gn131은 worker 노드이므로 tolerations 불필요
+
+nginx:
+  nodeSelector:
+    kubernetes.io/hostname: gn131
+
+portal:
+  nodeSelector:
+    kubernetes.io/hostname: gn131
+
+core:
+  nodeSelector:
+    kubernetes.io/hostname: gn131
+
+jobservice:
+  nodeSelector:
+    kubernetes.io/hostname: gn131
+
+registry:
+  nodeSelector:
+    kubernetes.io/hostname: gn131
+
+trivy:
+  enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: gn131
+
+database:
+  type: internal
+  internal:
+    nodeSelector:
+      kubernetes.io/hostname: gn131
+
+redis:
+  type: internal
+  internal:
+    nodeSelector:
+      kubernetes.io/hostname: gn131
+
+# ── 로그 레벨 ─────────────────────────────────────────────────
+logLevel: info

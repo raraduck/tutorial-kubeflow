@@ -85,7 +85,7 @@ data:
           "id": 4,
           "title": "GPU 사용률 (전체 평균)",
           "type": "stat",
-          "gridPos": { "x": 18, "y": 0, "w": 3, "h": 4 },
+          "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "options": { "colorMode": "background", "graphMode": "none" },
           "fieldConfig": {
@@ -105,36 +105,7 @@ data:
           "targets": [{
             "datasource": { "type": "prometheus", "uid": "prometheus" },
             "expr": "avg(DCGM_FI_DEV_GPU_UTIL)",
-            "legendFormat": "평균 사용률",
-            "instant": true
-          }]
-        },
-        {
-          "id": 10,
-          "title": "GPU 점유율",
-          "type": "stat",
-          "gridPos": { "x": 21, "y": 0, "w": 3, "h": 4 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "options": { "colorMode": "background", "graphMode": "none" },
-          "fieldConfig": {
-            "defaults": {
-              "color": { "mode": "thresholds" },
-              "unit": "percent",
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  { "color": "green",  "value": null },
-                  { "color": "yellow", "value": 50 },
-                  { "color": "red",    "value": 80 }
-                ]
-              }
-            }
-          },
-          "targets": [{
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "expr": "sum(kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"}) / sum(kube_node_status_allocatable{resource=\"nvidia_com_gpu\"}) * 100",
-            "legendFormat": "GPU 점유율",
-            "instant": true
+            "legendFormat": "평균 사용률"
           }]
         },
         {
@@ -206,12 +177,12 @@ data:
                     "value": {
                       "mode": "absolute",
                       "steps": [
-                        { "color": "#84cc16", "value": null },
+                        { "color": "84cc16", "value": null },
                         { "color": "transparent", "value": 4 },
                         { "color": "#84cc16", "value": 3 },
                         { "color": "#a3e635", "value": 2 },
                         { "color": "#f97316", "value": 1 },
-                        { "color": "#ef4444", "value": 0 }
+                        { "color": "#ef4444", "value": 0 },
                       ]
                     }
                   }
@@ -236,13 +207,6 @@ data:
                     }
                   }
                 ]
-              },
-              {
-                "matcher": { "id": "byName", "options": "GPU 모델" },
-                "properties": [
-                  { "id": "custom.align", "value": "center" },
-                  { "id": "custom.width", "value": 120 }
-                ]
               }
             ]
           },
@@ -250,7 +214,7 @@ data:
             {
               "refId": "A",
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "kube_node_status_allocatable{resource=\"nvidia_com_gpu\"} * on(node) group_left(label_nvidia_com_gpu_model) kube_node_labels{label_nvidia_com_gpu_model!=\"\"}",
+              "expr": "kube_node_status_allocatable{resource=\"nvidia_com_gpu\"}",
               "legendFormat": "{{node}}",
               "instant": true,
               "format": "table"
@@ -284,15 +248,7 @@ data:
                   "node": "노드",
                   "Value #A": "전체 GPU",
                   "Value #B": "잔여 GPU",
-                  "Value #C": "사용 중인 GPU",
-                  "label_nvidia_com_gpu_model": "GPU 모델"
-                },
-                "indexByName": {
-                  "label_nvidia_com_gpu_model": 0,
-                  "node": 1,
-                  "Value #A": 2,
-                  "Value #C": 3,
-                  "Value #B": 4
+                  "Value #C": "사용 중인 GPU"
                 },
                 "excludeByName": {
                   "Time": true,
@@ -305,8 +261,7 @@ data:
                   "container": true,
                   "endpoint": true,
                   "service": true,
-                  "unit": true,
-                  "Value #B": true
+                  "unit": true
                 }
               }
             }
@@ -336,42 +291,9 @@ data:
         },
         {
           "id": 8,
-          "title": "사용자별 GPU 사용량 추이",
-          "type": "timeseries",
-          "gridPos": { "x": 0, "y": 30, "w": 12, "h": 8 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "min": 0,
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 10
-              }
-            }
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": ["lastNotNull", "max"]
-            },
-            "tooltip": { "mode": "multi" }
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum by (namespace) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\", namespace!~\"kube-system|monitoring|longhorn-system|ingress-nginx|istio-system|knative-serving|cert-manager|harbor|nfs-provisioner|argo|auth|oauth2-proxy|kubeflow\"})",
-              "legendFormat": "{{namespace}}"
-            }
-          ]
-        },
-        {
-          "id": 9,
           "title": "전체 GPU 사용률 추이",
           "type": "timeseries",
-          "gridPos": { "x": 12, "y": 30, "w": 12, "h": 8 },
+          "gridPos": { "x": 0, "y": 30, "w": 24, "h": 8 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "fieldConfig": {
             "defaults": {

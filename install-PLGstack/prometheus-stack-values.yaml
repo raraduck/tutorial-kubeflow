@@ -135,7 +135,7 @@ kube-state-metrics:
     operator: "Exists"
     effect: "NoSchedule"
   extraArgs:
-  - --metric-labels-allowlist=nodes=[nvidia.com/gpu.model]
+  - --metric-labels-allowlist=nodes=[nvidia.com/gpu.model],pods=[notebook-name]
 
 # ── Prometheus Operator ──────────────────────────────────
 prometheusOperator:

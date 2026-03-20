@@ -1,0 +1,179 @@
+prometheus:
+  prometheusSpec:
+    enableAdminAPI: true
+    retention: 90d
+    retentionSize: "40GB"
+    nodeSelector:
+      kubernetes.io/hostname: gn132
+    tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: monitoring-nfs-sc
+          accessModes: [ "ReadWriteOnce" ]
+          resources:
+            requests:
+              storage: 40Gi
+
+    # 리소스 설정 (지난주 설정 추가)
+    resources:
+      requests:
+        cpu: 2000m
+        memory: 4Gi
+      limits:
+        cpu: 4000m
+        memory: 8Gi
+
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+  service:
+    type: NodePort
+    nodePort: 30900
+
+# ── Grafana ──────────────────────────────────────────────
+grafana:
+  enabled: true
+  adminPassword: "Grafana123!@#"
+
+  nodeSelector:
+    kubernetes.io/hostname: gn131
+  tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+  env:
+    TZ: Asia/Seoul
+
+  grafana.ini:
+    server:
+      root_url: http://192.168.0.80:30300
+    date_formats:
+      default_timezone: Asia/Seoul
+    users:
+      viewers_can_edit: false
+    dashboards:
+      default_home_dashboard_path: /tmp/dashboards/gpu-availability.json
+
+  service:
+    type: NodePort
+    nodePort: 30300
+
+  persistence:
+    enabled: true
+    storageClassName: grafana-nfs-sc
+    size: 10Gi
+    accessModes:
+    - ReadWriteOnce
+
+  # 리소스 설정 (지난주 설정 추가)
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  sidecar:
+    datasources:
+      defaultDatasourceEnabled: true
+      url: http://kube-prometheus-stack-prometheus:9090
+    dashboards:
+      enabled: true # ← 추가
+      searchNamespace: monitoring # ← 추가
+
+  additionalDataSources:
+  - name: Loki
+    type: loki
+    url: http://loki:3100
+    isDefault: false
+    jsonData:
+      maxLines: 1000
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+
+  dashboards:
+    default:
+      kubernetes-cluster:
+        gnetId: 7249
+        revision: 1
+        datasource: Prometheus
+      node-exporter:
+        gnetId: 1860
+        revision: 27
+        datasource: Prometheus
+      nvidia-gpu:
+        gnetId: 12239
+        revision: 2
+        datasource: Prometheus
+
+# ── kube-state-metrics ───────────────────────────────────
+kubeStateMetrics:
+  enabled: true
+
+kube-state-metrics:
+  nodeSelector:
+    kubernetes.io/hostname: cn01
+  tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"
+  extraArgs:
+  - --metric-labels-allowlist=nodes=[nvidia.com/gpu.model]
+
+# ── Prometheus Operator ──────────────────────────────────
+prometheusOperator:
+  nodeSelector:
+    kubernetes.io/hostname: gn132
+  tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+# ── AlertManager ─────────────────────────────────────────
+alertmanager:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30903
+  alertmanagerSpec:
+    nodeSelector:
+      kubernetes.io/hostname: gn131
+    tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: monitoring-nfs-sc
+          accessModes: [ "ReadWriteOnce" ]
+          resources:
+            requests:
+              storage: 5Gi
+
+# ── Node Exporter ────────────────────────────────────────
+nodeExporter:
+  enabled: true
+
+prometheus-node-exporter:
+  livenessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 5
+    periodSeconds: 10

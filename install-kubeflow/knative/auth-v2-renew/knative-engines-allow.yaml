@@ -1,0 +1,27 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: knative-engines-allow
+  namespace: aiops
+spec:
+  rules:
+  - from:
+    - source:
+        namespaces:
+        - istio-system
+        - aiops
+        - knative-serving
+    to:
+    - operation:
+        paths:
+        - /api/server
+        - /api/models
+        - /api/models/*
+        - /api/parameters
+        - /api/validation
+        - /api/analysis
+        - /api/cancel
+        - /api/cancel/*
+        - /healthz
+        - /metrics
+        - /wait-for-drain

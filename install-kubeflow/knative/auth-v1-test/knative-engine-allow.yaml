@@ -1,0 +1,16 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: knative-engine-allow
+  namespace: istio-system
+spec:
+  action: ALLOW
+  selector:
+    matchLabels:
+      app: istio-ingressgateway
+  rules:
+  - to:
+    - operation:
+        hosts:
+        - '*.aiops.192.168.0.80.sslip.io'
+        - '*.aiops.192.168.0.80.sslip.io:*'

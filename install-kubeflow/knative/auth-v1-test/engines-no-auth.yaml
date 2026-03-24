@@ -1,0 +1,10 @@
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: engines-no-auth
+  namespace: aiops
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: aiops
+  jwtRules: []

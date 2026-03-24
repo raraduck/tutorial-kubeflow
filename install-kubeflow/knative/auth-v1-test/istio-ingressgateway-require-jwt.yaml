@@ -1,0 +1,25 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: istio-ingressgateway-require-jwt
+  namespace: istio-system
+spec:
+  action: DENY
+  selector:
+    matchLabels:
+      app: istio-ingressgateway
+  rules:
+  - from:
+    - source:
+        notRequestPrincipals:
+        - '*'
+    to:
+    - operation:
+        notPaths:
+        - /dex/*
+        - /dex/**
+        - /oauth2/*
+        - /server
+        - /server/*
+        - /api/server      # 추가
+        - /api/server/*    # 추가

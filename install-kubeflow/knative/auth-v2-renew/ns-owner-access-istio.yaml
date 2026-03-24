@@ -1,0 +1,54 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: ns-owner-access-istio
+  namespace: aiops
+  annotations:
+    role: admin
+    user: aiops@neurophet.com
+spec:
+  rules:
+  - from:
+    - source:
+        principals:
+        - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
+        - cluster.local/ns/kubeflow/sa/ml-pipeline-ui
+    when:
+    - key: request.headers[kubeflow-userid]
+      values:
+      - aiops@neurophet.com
+  - when:
+    - key: source.namespace
+      values:
+      - aiops
+  - to:
+    - operation:
+        paths:
+        - /healthz
+        - /metrics
+        - /wait-for-drain
+  - from:
+    - source:
+        principals:
+        - cluster.local/ns/kubeflow/sa/notebook-controller-service-account
+    to:
+    - operation:
+        methods:
+        - GET
+        paths:
+        - '*/api/kernels'
+  - from:
+    - source:
+        namespaces:
+        - istio-system
+    to:
+    - operation:
+        paths:
+        - /api/server
+        - /api/models
+        - /api/models/*
+        - /api/parameters
+        - /api/validation
+        - /api/analysis
+        - /api/cancel
+        - /api/cancel/*

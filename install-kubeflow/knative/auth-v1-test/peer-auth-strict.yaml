@@ -1,0 +1,9 @@
+# peer-auth-strict.yaml
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: aiops
+spec:
+  mtls:
+    mode: STRICT

@@ -5,7 +5,26 @@
 
 ---
 
-## 1. 구조 개요
+## 1. sslip.io DNS
+
+sslip.io는 별도 등록 없이 URL에 IP를 포함하면 자동으로 해당 IP로 resolve되는 퍼블릭 DNS 서비스입니다.
+Knative 서비스 URL이 자동으로 sslip.io 형식으로 생성되며, 별도 DNS 서버 설정이나 등록 절차가 필요 없습니다.
+
+```
+형식: {서비스명}.{네임스페이스}.{클러스터IP}.sslip.io:{NodePort}
+예시: engine-t1-seg.aiops.192.168.0.80.sslip.io:31120 → 192.168.0.80:31120
+```
+
+| 구성요소 | 값 | 설명 |
+|---------|-----|------|
+| 서비스명 | `engine-t1-seg` | Knative Service 이름 |
+| 네임스페이스 | `aiops` | 배포된 네임스페이스 |
+| 클러스터 IP | `192.168.0.80` | 노드 IP |
+| NodePort | `31120` | Istio IngressGateway HTTP 포트 |
+
+---
+
+## 2. 구조 개요
 
 ```
 외부 요청 (:31120)
@@ -31,7 +50,7 @@ engine Pod → 200 OK
 
 ---
 
-## 2. Knative Service 매니페스트
+## 3. Knative Service 매니페스트
 
 > ✅ 성공 기준: `engine-t1-seg` 설정을 기준으로 작성
 
@@ -90,7 +109,7 @@ spec:
 
 ---
 
-## 3. kubeflow-gateway — httpsRedirect 제거
+## 4. kubeflow-gateway — httpsRedirect 제거
 
 > ⚠️ `httpsRedirect: true` 가 있으면 모든 HTTP 요청이 301로 리다이렉트됨  
 > Knative VirtualService가 이 gateway를 사용하므로 반드시 제거 필요
@@ -126,7 +145,7 @@ spec:
 
 ---
 
-## 4. PeerAuthentication — mTLS STRICT
+## 5. PeerAuthentication — mTLS STRICT
 
 > **역할:** `aiops` 네임스페이스 내 모든 Pod 간 통신을 mTLS로 강제  
 > **필요성:** 네임스페이스 보안 기준선. AuthorizationPolicy들과 함께 동작하며 신뢰할 수 없는 트래픽 차단
@@ -145,7 +164,7 @@ spec:
 
 ---
 
-## 5. RequestAuthentication — JWT 검증 비활성화
+## 6. RequestAuthentication — JWT 검증 비활성화
 
 > **역할:** `app.kubernetes.io/part-of: aiops` 레이블을 가진 engine Pod들에 대해 JWT 토큰 검증을 하지 않도록 선언  
 > **필요성:** 없으면 `istio-ingressgateway-require-jwt` DENY 정책이 engine Pod 레벨까지 JWT를 요구할 수 있음
@@ -166,7 +185,7 @@ spec:
 
 ---
 
-## 6. AuthorizationPolicy — oauth2-proxy 인증 스킵
+## 7. AuthorizationPolicy — oauth2-proxy 인증 스킵
 
 > **역할:** oauth2-proxy 인증을 거치지 않아도 되는 경로 지정  
 > **필요성:** `/api/server`가 없으면 oauth2-proxy가 인증을 요구하여 로그인 페이지로 리다이렉트됨  
@@ -209,7 +228,7 @@ spec:
 
 ---
 
-## 7. AuthorizationPolicy — JWT 없는 요청 차단 예외
+## 8. AuthorizationPolicy — JWT 없는 요청 차단 예외
 
 > **역할:** JWT 토큰이 없는 요청을 기본 차단하되, 특정 경로는 예외 처리  
 > **필요성:** `/api/server`가 notPaths에 없으면 JWT 없는 curl 요청이 차단됨  
@@ -250,7 +269,7 @@ spec:
 
 ---
 
-## 8. AuthorizationPolicy — 게이트웨이 레벨 호스트 허용
+## 9. AuthorizationPolicy — 게이트웨이 레벨 호스트 허용
 
 > **역할:** `*.aiops.sslip.io` 호스트로 들어오는 요청을 ingressgateway에서 허용  
 > **필요성:** 없으면 Knative 서비스 호스트가 게이트웨이에서 차단됨  
@@ -278,7 +297,7 @@ spec:
 
 ---
 
-## 9. AuthorizationPolicy — Kubeflow 사용자 및 pipeline 접근 허용
+## 10. AuthorizationPolicy — Kubeflow 사용자 및 pipeline 접근 허용
 
 > **역할:** Kubeflow 대시보드/notebook에서 aiops 네임스페이스 리소스 접근 허용  
 > **필요성:** Kubeflow UI 및 ml-pipeline에서 aiops 네임스페이스 접근 시 필요  
@@ -339,7 +358,7 @@ spec:
 
 ---
 
-## 10. AuthorizationPolicy — Pod 레벨 엔진 접근 허용
+## 11. AuthorizationPolicy — Pod 레벨 엔진 접근 허용
 
 > **역할:** `istio-system`, `aiops`, `knative-serving`에서 오는 `/api/server` 요청을 Pod 레벨에서 허용  
 > **필요성:** 게이트웨이를 통과해도 Pod 레벨에서 차단됨 (403 RBAC)  
@@ -378,7 +397,7 @@ spec:
 
 ---
 
-## 11. 배포 후 검증
+## 12. 배포 후 검증
 
 ```bash
 # 서비스 상태 확인
@@ -395,7 +414,7 @@ curl http://engine-normative.aiops.192.168.0.80.sslip.io:31120/api/server
 
 ---
 
-## 12. 트러블슈팅
+## 13. 트러블슈팅
 
 | 증상 | 원인 | 해결 |
 |------|------|------|

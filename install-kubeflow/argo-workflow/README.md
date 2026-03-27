@@ -1,6 +1,6 @@
 # kubeflow 에서 argo workflow 활용
 
-1. argo 명령어 다운로드
+### 1. argo 명령어 다운로드
 
 Kubeflow에 Argo가 이미 설치되어 있어도 CLI는 별도로 받아야 합니다.
 
@@ -15,7 +15,7 @@ sudo mv argo-linux-amd64 /usr/local/bin/argo
 argo version
 ```
 
-2. MinIO 접근권한
+### 2. MinIO 접근권한
 
 Kubeflow의 Argo는 artifact를 MinIO에 저장하는데, 접근 설정이 필요합니다.
 
@@ -27,7 +27,7 @@ kubectl get secret -n kubeflow mlpipeline-minio-artifact -o yaml
 kubectl get configmap -n kubeflow workflow-controller-configmap -o yaml
 ```
 
-3. 네임스페이스 확인 후 워크플로우 실행
+### 3. 네임스페이스 확인 후 워크플로우 실행
 
 Kubeflow 설치 방식에 따라 Argo가 뜨는 네임스페이스가 다릅니다.
 
@@ -73,7 +73,7 @@ spec:
 
 ## **(별도 방법) Argo Server를 별도 배포 (UI가 필요한 경우)**
 
-1. Argo Server ServiceAccount , RBAC 설정
+### 1. Argo Server ServiceAccount , RBAC 설정
 - serviceaccount 생성
 ```bash
 kubectl create serviceaccount argo-server -n kubeflow
@@ -126,7 +126,7 @@ subjects:
 kubectl apply -f argo-server-role-rolebinding.yaml
 ```
 
-2. Kubeflow 내장 ml-pipeline-ui와 별도로 Argo 전용 UI가 필요하다면 Argo Server만 추가 배포할 수 있습니다. (NodePort 포함)
+### 2. Kubeflow 내장 ml-pipeline-ui와 별도로 Argo 전용 UI가 필요하다면 Argo Server만 추가 배포할 수 있습니다. (NodePort 포함)
 ```yaml
 # argo-ui.yaml
 apiVersion: apps/v1
@@ -181,9 +181,33 @@ spec:
 ```bash
 # argo-server deployment만 추가 (workflow-controller는 이미 있으므로 생략)
 kubectl apply -n kubeflow -f argo-ui.yaml
+# insecure 모드로 우회접속 허용
+kubectl patch deployment argo-server -n kubeflow \
+  --type=json \
+  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["server","--auth-mode=server","--secure=false"]}]'
+# argo-server 전용 NetworkPolicy 추가
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argo-server
+  namespace: kubeflow
+spec:
+  podSelector:
+    matchLabels:
+      app: argo-server
+  policyTypes:
+  - Ingress
+  ingress:
+  - {}   # 모든 트래픽 허용 (외부 NodePort 포함)
+EOF
 ```
-
-3. Istio 관련 주의사항 추가 권장
+### 최종 정리 (이 클러스터 기준)
+1. argo-server 배포kubectl apply -f argo-ui.yamlUI + NodePort Service 생성
+2. HTTP 모드--secure=false patch자체 TLS 제거 (NodePort 직접 접근 시 인증서 문제 우회)
+3. NetworkPolicy 추가argo-server NetworkPolicydefault-allow-same-namespace 정책으로 인한 외부 트래픽 차단 해제
+---
+### 3. Istio 관련 주의사항 추가 권장
 
 NodePort로 외부 접근 시 Kubeflow의 Istio sidecar가 트래픽을 차단할 수 있으므로 한 줄 추가하면 좋습니다:
 ```

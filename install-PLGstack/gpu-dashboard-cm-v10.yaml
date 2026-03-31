@@ -404,7 +404,7 @@ data:
             {
               "refId": "A",
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum by (namespace, pod, node) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\", namespace=~\"changseon|dahyun|doyeon|kgy|kyeoryelee|shpark|wjj910|yeg0311\"} * on(namespace, pod) group_left(node) kube_pod_info * on(namespace, pod) group_left() kube_pod_labels{label_notebook_name!=\"\"})",
+              "expr": "sum by (namespace, pod, node) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\", namespace!~\"kube-system|kube-public|kube-node-lease|kubeflow|istio-system|monitoring|longhorn-system|harbor|argo|auth|cert-manager|ingress-nginx|knative-serving|nfs-provisioner|oauth2-proxy|aiops|default\"} * on(namespace, pod) group_left(node) kube_pod_info)",
               "legendFormat": "{{namespace}}/{{pod}}",
               "instant": true,
               "format": "table"

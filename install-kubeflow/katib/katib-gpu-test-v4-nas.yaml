@@ -1,0 +1,128 @@
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: katib-gpu-test-v4-nas
+  namespace: dwnkim
+spec:
+  objective:
+    type: maximize
+    goal: 0.92
+    objectiveMetricName: accuracy
+  algorithm:
+    algorithmName: multivariate-tpe
+
+  earlyStopping:
+    algorithmName: medianstop
+    algorithmSettings:
+      - name: min_trials_required
+        value: "3"
+      - name: start_step
+        value: "2"
+
+  parallelTrialCount: 2
+  maxTrialCount: 8
+  maxFailedTrialCount: 3
+  metricsCollectorSpec:
+    collector:
+      kind: StdOut
+    source:
+      filter:
+        metricsFormat:
+          - "{metricName: ([\\w|-]+), metricValue: ((-?\\d+)(\\.\\d+)?)}"
+  parameters:
+    # 기존 하이퍼파라미터
+    - name: lr
+      parameterType: double
+      feasibleSpace:
+        min: "0.01"
+        max: "0.3"
+    - name: momentum
+      parameterType: double
+      feasibleSpace:
+        min: "0.5"
+        max: "0.9"
+    - name: batch-size
+      parameterType: int
+      feasibleSpace:
+        min: "32"
+        max: "256"
+
+    # NAS 구조 탐색 파라미터
+    - name: conv1-channels
+      parameterType: int
+      feasibleSpace:
+        min: "8"
+        max: "32"
+    - name: conv2-channels
+      parameterType: int
+      feasibleSpace:
+        min: "32"
+        max: "128"
+    - name: fc1-size
+      parameterType: int
+      feasibleSpace:
+        min: "128"
+        max: "1024"
+    - name: dropout-rate
+      parameterType: double
+      feasibleSpace:
+        min: "0.0"
+        max: "0.5"
+
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+      - name: learningRate
+        description: Learning rate
+        reference: lr
+      - name: momentum
+        description: Momentum
+        reference: momentum
+      - name: batchSize
+        description: Batch size
+        reference: batch-size
+      - name: conv1Channels
+        description: Conv layer 1 channels
+        reference: conv1-channels
+      - name: conv2Channels
+        description: Conv layer 2 channels
+        reference: conv2-channels
+      - name: fc1Size
+        description: FC layer 1 hidden size
+        reference: fc1-size
+      - name: dropoutRate
+        description: Dropout rate
+        reference: dropout-rate
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          metadata:
+            annotations:
+              sidecar.istio.io/inject: "false"
+          spec:
+            nodeSelector:
+              nvidia.com/gpu.model: rtx3090
+            containers:
+              - name: training-container
+                image: 192.168.0.80:30002/dwnkim/pytorch-mnist-gpu:v2.0-nas
+                command:
+                  - "python3"
+                  - "/opt/pytorch-mnist/mnist.py"
+                  - "--epochs=3"
+                  - "--batch-size=${trialParameters.batchSize}"
+                  - "--lr=${trialParameters.learningRate}"
+                  - "--momentum=${trialParameters.momentum}"
+                  - "--conv1-channels=${trialParameters.conv1Channels}"
+                  - "--conv2-channels=${trialParameters.conv2Channels}"
+                  - "--fc1-size=${trialParameters.fc1Size}"
+                  - "--dropout-rate=${trialParameters.dropoutRate}"
+                resources:
+                  requests:
+                    cpu: "2"
+                    memory: "2Gi"
+                  limits:
+                    cpu: "4"
+                    memory: "4Gi"
+            restartPolicy: Never

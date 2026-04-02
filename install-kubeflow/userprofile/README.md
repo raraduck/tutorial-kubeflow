@@ -88,3 +88,17 @@ kubectl rollout restart deployment dex -n auth
 ```
 ## 3. 프로필에 사용자를 추가하기
 - UI에서 소유하고있는 프로필에 대한 Contributor에 사용자 계정을 추가해주면 됩니다.
+
+# Dex update
+```bash
+kubectl create configmap dex -n auth   --from-file=config.yaml=dex.yaml   --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl rollout restart deployment dex -n auth
+```
+
+# Jupyter Spawner
+```bash
+kubectl create configmap jupyter-web-app-config-9c2fbg2gdc -n kubeflow   --from-file=spawner_ui_config.yaml=custom-spawner.yaml   -o yaml --dry-run=client | kubectl apply -f -
+
+kubectl rollout restart deployment jupyter-web-app-deployment -n kubeflow
+```

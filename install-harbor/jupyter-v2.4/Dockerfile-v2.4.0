@@ -1,4 +1,4 @@
-FROM docker.io/nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
+FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
 
 # ── 환경 변수 ────────────────────────────────────────────────────────────────
 ENV DEBIAN_FRONTEND=noninteractive
@@ -219,7 +219,6 @@ RUN if getent passwd 1000 > /dev/null 2>&1; then \
     else \
         useradd -m -s /bin/bash -u 1000 jovyan; \
     fi \
-    && usermod -aG users jovyan \
     && echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
     # jovyan 비밀번호 설정 (SSH 접속용)
     && echo "jovyan:jovyan" | chpasswd
@@ -240,27 +239,10 @@ RUN mkdir -p /home/jovyan/.claude \
     && mkdir -p /home/jovyan/.local/share/code-server/extensions \
     && python3 -m ipykernel install --user --name python3 --display-name "Python 3.12 (CUDA 12.8)"
 
-# ── 16. VS Code Server 사전 설치 ─────────────────────────────────────────────
-# 로컬 VS Code의 commit hash 확인: code --version (두 번째 줄)
-# 또는: curl -fsSL https://update.code.visualstudio.com/api/commits/stable/server-linux-x64
-ARG VSCODE_COMMIT
-RUN if [ -n "${VSCODE_COMMIT}" ]; then \
-        mkdir -p /home/jovyan/.vscode-server/bin/${VSCODE_COMMIT} \
-        && curl -fsSL \
-           "https://update.code.visualstudio.com/commit:${VSCODE_COMMIT}/server-linux-x64/stable" \
-           -o /tmp/vscode-server.tar.gz \
-        && tar -xz --strip-components=1 \
-           -C /home/jovyan/.vscode-server/bin/${VSCODE_COMMIT} \
-           -f /tmp/vscode-server.tar.gz \
-        && rm /tmp/vscode-server.tar.gz; \
-    else \
-        echo "[WARN] VSCODE_COMMIT 미지정 — VS Code Server 사전 설치 건너뜀"; \
-    fi
-
 ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
 ENV NB_PREFIX="/"
 
-ARG IMAGE_VERSION=v2.4.1
+ARG IMAGE_VERSION=v2.4.0
 LABEL maintainer="neuropean" \
       version="${IMAGE_VERSION}" \
       type="jupyter" \
@@ -268,8 +250,7 @@ LABEL maintainer="neuropean" \
       python.version="3.12" \
       cuda.version="12.8.1" \
       node.version="20" \
-      code-server.version="${CODE_SERVER_VERSION}" \
-      vscode.commit="${VSCODE_COMMIT}"
+      code-server.version="${CODE_SERVER_VERSION}"
 
 EXPOSE 8888 22
 

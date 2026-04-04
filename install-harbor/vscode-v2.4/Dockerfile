@@ -190,6 +190,7 @@ RUN if getent passwd 1000 > /dev/null 2>&1; then \
     else \
         useradd -m -s /bin/bash -u 1000 jovyan; \
     fi \
+    && usermod -aG users jovyan \
     && echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
     && echo "jovyan:jovyan" | chpasswd
 
@@ -263,7 +264,7 @@ RUN mkdir -p /home/jovyan/.claude \
 
 ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
 
-ARG IMAGE_VERSION=v2.4.0
+ARG IMAGE_VERSION=v2.4.1
 LABEL maintainer="neuropean" \
       version="${IMAGE_VERSION}" \
       type="vscode" \

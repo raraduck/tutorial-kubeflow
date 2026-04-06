@@ -23,7 +23,6 @@ def submit_argo_workflow_via_api(**context):
     duration = str(params['duration'])
 
     # 3. [핵심] Kubernetes 표준 객체로 컨테이너 정의 (타입 체크 가능!)
-    #    client.V1Container를 쓰면 오타를 줄일 수 있습니다.
     container_spec = k8s.V1Container(
         name="gpu-burn",
         image="docker.io/jorghi21/gpu-burn-test:latest",
@@ -34,17 +33,24 @@ def submit_argo_workflow_via_api(**context):
     )
 
     # 4. Argo Workflow 정의 (Dictionary)
-    #    Argo 전용 필드는 dict로, K8s 표준 필드는 위에서 만든 객체의 .to_dict()를 씁니다.
     manifest = {
         "apiVersion": "argoproj.io/v1alpha1",
         "kind": "Workflow",
         "metadata": {
             "generateName": "gpu-burn-test-",
-            "namespace": "argo"  # 네임스페이스 지정
+            "namespace": "argo"
         },
         "spec": {
             "entrypoint": "main",
-            "serviceAccountName": "argo", # 권한 있는 SA 필수
+            "serviceAccountName": "argo",
+            # ── podGC: 워크플로우 완료 시 Pod 자동 삭제 ──────────────────
+            "podGC": {
+                # "strategy": "OnWorkflowCompletion"  # 완료 즉시 삭제
+                "strategy": "OnPodCompletion"   #  : 각 Pod 완료 시마다 즉시 삭제
+                # "OnWorkflowCompletion": 워크플로우 전체 완료 후 삭제
+                # "OnWorkflowSuccess"  : 워크플로우 성공 시에만 삭제
+            },
+            # ─────────────────────────────────────────────────────────────
             "arguments": {
                 "parameters": [
                     {"name": "job-count", "value": job_count},
@@ -81,14 +87,13 @@ def submit_argo_workflow_via_api(**context):
                     "inputs": {
                         "parameters": [{"name": "duration-sec"}]
                     },
-                    # [여기서 합체!] 위에서 정의한 K8s 객체를 Dictionary로 변환하여 주입
                     "container": container_spec.to_dict()
                 }
             ]
         }
     }
 
-    # 5. API로 제출 (argo submit 명령어와 동일한 효과)
+    # 5. API로 제출
     try:
         response = api.create_namespaced_custom_object(
             group="argoproj.io",
@@ -118,7 +123,6 @@ with DAG(
     }
 ) as dag:
 
-    # KubernetesPodOperator 대신 PythonOperator를 사용합니다.
     submit_workflow = PythonOperator(
         task_id='submit_workflow_python',
         python_callable=submit_argo_workflow_via_api

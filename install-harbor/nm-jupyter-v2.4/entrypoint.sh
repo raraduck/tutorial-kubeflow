@@ -22,5 +22,9 @@ if [ ! -f "${HOME_DIR}/.bash_profile" ]; then
         > "${HOME_DIR}/.bash_profile"
 fi
 
-# 4. CMD 실행 (jupyter lab 등)
+# 4. SSH 서버 시작
+mkdir -p /run/sshd
+sudo /usr/sbin/sshd
+
+# 5. CMD 실행 (jupyter lab 등)
 exec "$@"

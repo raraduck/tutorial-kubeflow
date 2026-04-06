@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         vim \
         htop \
+        openssh-server \
         tini \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.12 /usr/bin/python \
@@ -60,7 +61,6 @@ RUN curl -fsSL https://code-server.dev/install.sh \
 RUN npm install -g @anthropic-ai/claude-code
 
 # ── 6. Miniconda 설치 (버전 고정: conda 24.7.1 포함) ────────────────────────
-# py312_24.7.1-0 빌드에 conda 24.7.1 포함
 ARG MINICONDA_VERSION=py312_24.7.1-0
 RUN curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-x86_64.sh \
     -o /tmp/miniconda.sh \
@@ -75,6 +75,9 @@ RUN curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSIO
 
 # conda auto_activate_base 비활성화
 RUN /opt/conda/bin/conda config --set auto_activate_base false
+
+# conda 명령만 전역에서 접근 가능하도록 심볼릭 링크
+RUN ln -s /opt/conda/bin/conda /usr/local/bin/conda
 
 # ── 7. PyTorch 2.5.1 + CUDA 12.1 ────────────────────────────────────────────
 RUN pip3 install --no-cache-dir --break-system-packages \
@@ -176,15 +179,25 @@ RUN echo 'cat /etc/motd' >> /etc/bash.bashrc
 # conda 명령만 전역에서 접근 가능하도록 심볼릭 링크
 RUN ln -s /opt/conda/bin/conda /usr/local/bin/conda
 
-# ── 10. Kubeflow 호환 jovyan 사용자 생성 ─────────────────────────────────────
+# ── 10. SSH 서버 설정 ────────────────────────────────────────────────────────
+RUN ssh-keygen -A \
+    && mkdir -p /run/sshd \
+    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/#UsePAM yes/UsePAM no/' /etc/ssh/sshd_config \
+    && sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
+
+# ── 11. Kubeflow 호환 jovyan 사용자 생성 ─────────────────────────────────────
 RUN if getent passwd 1000 > /dev/null 2>&1; then \
         usermod -l jovyan -d /home/jovyan -m $(getent passwd 1000 | cut -d: -f1); \
     else \
         useradd -m -s /bin/bash -u 1000 jovyan; \
     fi \
-    && echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    && usermod -aG users jovyan \
+    && echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    && echo "jovyan:jovyan" | chpasswd
 
-# ── 11. jovyan 환경 설정 ─────────────────────────────────────────────────────
+# ── 12. jovyan 환경 설정 ─────────────────────────────────────────────────────
 USER jovyan
 WORKDIR /home/jovyan
 
@@ -233,7 +246,7 @@ RUN mkdir -p /home/jovyan/.claude \
 
 ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
 
-ARG IMAGE_VERSION=v2.3.0
+ARG IMAGE_VERSION=v2.4.0
 LABEL maintainer="neuropean" \
       version="${IMAGE_VERSION}" \
       type="vscode" \
@@ -244,13 +257,10 @@ LABEL maintainer="neuropean" \
       node.version="20" \
       code-server.version="${CODE_SERVER_VERSION}"
 
-EXPOSE 8888
+EXPOSE 8888 22
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8888/healthz || exit 1
 
 ENTRYPOINT ["tini", "--"]
-CMD ["code-server", \
-     "--bind-addr", "0.0.0.0:8888", \
-     "--auth", "none", \
-     "/home/jovyan"]
+CMD ["/bin/bash", "-c", "mkdir -p /run/sshd && sudo /usr/sbin/sshd && exec code-server --bind-addr 0.0.0.0:8888 --auth none /home/jovyan"]

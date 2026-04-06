@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         vim \
         htop \
+        openssh-server \
         # Kubeflow notebook server 요구사항
         tini \
     && rm -rf /var/lib/apt/lists/* \
@@ -61,7 +62,6 @@ RUN curl -fsSL https://code-server.dev/install.sh \
 RUN npm install -g @anthropic-ai/claude-code
 
 # ── 6. Miniconda 설치 (버전 고정: conda 24.7.1 포함) ────────────────────────
-# py312_24.7.1-0 빌드에 conda 24.7.1 포함
 ARG MINICONDA_VERSION=py312_24.7.1-0
 RUN curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-x86_64.sh \
     -o /tmp/miniconda.sh \
@@ -88,7 +88,6 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     --index-url https://download.pytorch.org/whl/cu121
 
 # ── 8. 도메인 라이브러리 ─────────────────────────────────────────────────────
-# numpy 2.x (torch 2.5.1은 numpy 2.x 지원)
 RUN pip3 install --no-cache-dir --break-system-packages numpy==2.2.6
 
 # 의료 영상 / 데이터 라이브러리
@@ -201,53 +200,34 @@ RUN mkdir -p /opt/neuropean \
        '> **torchvision**: 0.20.1+cu121  ' \
        '> **DDP**: torchrun + NCCL (4-GPU)  ' \
        '> **Conda**: `/opt/conda`' \
-       '' \
-       '---' \
-       '' \
-       '## 🚀 DDP 학습 실행' \
-       '' \
-       '```bash' \
-       'torchrun --nproc_per_node=4 train.py' \
-       '```' \
-       '' \
-       '## 🐍 Conda 환경' \
-       '' \
-       '```bash' \
-       'conda init bash && source ~/.bashrc' \
-       'conda create -n myenv python=3.12.9' \
-       'conda activate myenv' \
-       'pip install -r requirements.txt' \
-       '```' \
-       '' \
-       '## 📦 핵심 라이브러리 버전' \
-       '' \
-       '| 패키지 | 버전 |' \
-       '|--------|------|' \
-       '| torch | 2.5.1+cu121 |' \
-       '| torchvision | 0.20.1+cu121 |' \
-       '| numpy | 2.2.6 |' \
-       '| scipy | 1.14.1 |' \
-       '| matplotlib | 3.10.6 |' \
-       '| nibabel | 5.4.0 |' \
-       '| h5py | 3.14.0 |' \
        > /opt/neuropean/README.md
 
-# ── 11. Kubeflow 호환 jovyan 사용자 생성 ─────────────────────────────────────
+# ── 11. SSH 서버 설정 ────────────────────────────────────────────────────────
+RUN ssh-keygen -A \
+    && mkdir -p /run/sshd \
+    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/#UsePAM yes/UsePAM no/' /etc/ssh/sshd_config \
+    && sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
+
+# ── 12. Kubeflow 호환 jovyan 사용자 생성 ─────────────────────────────────────
 RUN if getent passwd 1000 > /dev/null 2>&1; then \
         usermod -l jovyan -d /home/jovyan -m $(getent passwd 1000 | cut -d: -f1); \
     else \
         useradd -m -s /bin/bash -u 1000 jovyan; \
     fi \
-    && echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    && usermod -aG users jovyan \
+    && echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    && echo "jovyan:jovyan" | chpasswd
 
-# ── 12. jupyter-server-proxy로 code-server 등록 ─────────────────────────────
+# ── 13. jupyter-server-proxy로 code-server 등록 ─────────────────────────────
 COPY jupyter_server_config.py /etc/jupyter/jupyter_server_config.py
 
-# ── 13. entrypoint 스크립트 ──────────────────────────────────────────────────
+# ── 14. entrypoint 스크립트 ──────────────────────────────────────────────────
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# ── 14. jovyan 환경 설정 ─────────────────────────────────────────────────────
+# ── 15. jovyan 환경 설정 ─────────────────────────────────────────────────────
 USER jovyan
 WORKDIR /home/jovyan
 
@@ -259,7 +239,7 @@ RUN mkdir -p /home/jovyan/.claude \
 ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
 ENV NB_PREFIX="/"
 
-ARG IMAGE_VERSION=v2.3.0
+ARG IMAGE_VERSION=v2.4.0
 LABEL maintainer="neuropean" \
       version="${IMAGE_VERSION}" \
       type="jupyter" \
@@ -270,7 +250,7 @@ LABEL maintainer="neuropean" \
       node.version="20" \
       code-server.version="${CODE_SERVER_VERSION}"
 
-EXPOSE 8888
+EXPOSE 8888 22
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8888/api || exit 1

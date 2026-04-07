@@ -178,6 +178,7 @@ EOF
 ```
 
 ## 4. 사용자 권한 제어 (예시 aidev 계정=네임스페이스)
+### ⚠️ Argo Workflow를 사용하는 모든 네임스페이스에 동일하게 적용 필요
 내장된 argo-cluster-role을 그대로 활용하는 것을 권장합니다. (Kubeflow 파이프라인과의 호환성 때문)
 ```bash
 # 현재 바인딩 확인
@@ -213,3 +214,24 @@ EOF
 # 토큰 확인 (UI에 로그인할 때 토큰앞에 Bearer 를 붙여야합니다.)
 echo "Bearer $(kubectl get secret default-argo-token -n aidev -o jsonpath='{.data.token}' | base64 -d)"
 ```
+### 예시) dwnkim 사용자 네임스페이스에 Argo 권한 추가
+Argo Workflow를 사용자 네임스페이스(예: dwnkim)에서 실행하려면 해당 네임스페이스의 default SA에도 권한을 부여해야 합니다.
+```bash
+# 사용자 네임스페이스의 default SA에 argo-cluster-role 바인딩
+kubectl create rolebinding argo-default-binding \
+  -n <namespace> \
+  --clusterrole=argo-cluster-role \
+  --serviceaccount=<namespace>:default
+
+# 예시: dwnkim 네임스페이스
+kubectl create rolebinding argo-default-binding \
+  -n dwnkim \
+  --clusterrole=argo-cluster-role \
+  --serviceaccount=dwnkim:default
+```
+
+> **주의**: 이 설정이 없으면 Argo Workflow 실행 시 아래 에러가 발생합니다.
+> ```
+> pods "xxx" is forbidden: User "system:serviceaccount:<namespace>:default" 
+> cannot patch resource "pods" in API group "" in the namespace "<namespace>"
+> ```

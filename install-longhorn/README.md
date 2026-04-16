@@ -19,9 +19,9 @@ helm install longhorn longhorn/longhorn \
   --namespace longhorn-system \
   --create-namespace \
   --set persistence.defaultClass=false \
-  --set defaultSettings.defaultReplicaCount=2 \
+  --set defaultSettings.defaultReplicaCount=1 \
   --set defaultSettings.storageOverProvisioningPercentage=150 \
-  --set persistence.defaultClassReplicaCount=2 \
+  --set persistence.defaultClassReplicaCount=1 \
   --set persistence.volumeBindingMode=WaitForFirstConsumer \
   --set defaultSettings.replicaAutoBalance=best-effort \
   --set defaultSettings.defaultDataLocality=best-effort \

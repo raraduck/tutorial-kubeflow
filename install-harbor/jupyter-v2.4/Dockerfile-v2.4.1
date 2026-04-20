@@ -1,10 +1,9 @@
-FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
+FROM docker.io/nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
 
 # ── 환경 변수 ────────────────────────────────────────────────────────────────
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64
-
 
 # ── 1. 시스템 패키지 ─────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -25,8 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         vim \
         htop \
-        tini \
         openssh-server \
+        # Kubeflow notebook server 요구사항
+        tini \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.12 /usr/bin/python \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3
@@ -54,7 +54,7 @@ RUN curl -fsSL https://code-server.dev/install.sh \
     && rm -rf /root/.cache
 
 # ── 5. Claude Code + GitHub Copilot CLI 전역 설치 ───────────────────────────
-RUN npm install -g @anthropic-ai/claude-code @github/copilot
+RUN npm install -g @anthropic-ai/claude-code
 
 # ── 6. Miniconda 설치 (버전 고정) ───────────────────────────────────────────
 ARG MINICONDA_VERSION=py312_24.11.1-0
@@ -69,8 +69,11 @@ RUN curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSIO
        python=3.12 \
     && /opt/conda/bin/conda clean -afy
 
-# conda auto_activate_base 비활성화 (사용자가 직접 init)
+# conda auto_activate_base 비활성화 (사용자가 conda init 후 직접 활성화)
 RUN /opt/conda/bin/conda config --set auto_activate_base false
+
+# conda 명령만 전역에서 접근 가능하도록 심볼릭 링크
+RUN ln -s /opt/conda/bin/conda /usr/local/bin/conda
 
 # ── 7. PyTorch 2.7.1 + CUDA 12.8 ────────────────────────────────────────────
 RUN pip3 install --no-cache-dir --break-system-packages \
@@ -116,7 +119,6 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 # 유틸리티
 RUN pip3 install --no-cache-dir --break-system-packages \
     tensorboard \
-    pytorch_lightning \
     python-dotenv==1.0.1 \
     requests==2.32.4 \
     urllib3==2.5.0 \
@@ -128,10 +130,18 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     typing-inspect==0.9.0 \
     setuptools==78.1.1
 
-# ── 9. MOTD (터미널 환경 안내) 설정 ─────────────────────────────────────────
+# ── 9. JupyterLab + jupyter-server-proxy ────────────────────────────────────
+RUN pip3 install --no-cache-dir --break-system-packages \
+    jupyterlab \
+    notebook \
+    jupyter-server-proxy \
+    ipykernel \
+    pytorch_lightning
+
+# ── 10. MOTD + README ────────────────────────────────────────────────────────
 RUN printf '%s\n' \
     '╔══════════════════════════════════════════════════════════════════╗' \
-    '║          Neuropean AI Workstation - VSCode Server                ║' \
+    '║        Neuropean AI Workstation - JupyterLab Server              ║' \
     '╠══════════════════════════════════════════════════════════════════╣' \
     '║  Base    : nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04            ║' \
     '║  Python  : 3.12 (system) / 3.12 (conda base)                     ║' \
@@ -145,6 +155,11 @@ RUN printf '%s\n' \
     '║    conda create -n myenv python=3.12                             ║' \
     '║    conda activate myenv                                          ║' \
     '║    pip install -r requirements.txt                               ║' \
+    '║                                                                  ║' \
+    '║  [Jupyter] Conda 환경을 커널로 등록                                 ║' \
+    '║    conda activate myenv                                          ║' \
+    '║    pip install ipykernel                                         ║' \
+    '║    python -m ipykernel install --user --name myenv               ║' \
     '║                                                                  ║' \
     '║  [Libs] 설치된 주요 라이브러리                                      ║' \
     '║    torch / torchvision / pytorch_lightning                       ║' \
@@ -169,38 +184,12 @@ RUN printf '%s\n' \
     '║    nvidia-smi                                                    ║' \
     '║    python -c "import torch; print(torch.cuda.is_available())"    ║' \
     '╚══════════════════════════════════════════════════════════════════╝' \
-    > /etc/motd
+    > /etc/motd \
+    && echo 'cat /etc/motd' > /etc/profile.d/motd.sh \
+    && chmod +x /etc/profile.d/motd.sh \
+    && echo 'cat /etc/motd' >> /etc/bash.bashrc
 
-RUN echo 'cat /etc/motd' >> /etc/bash.bashrc
-
-# conda 명령만 전역에서 접근 가능하도록 심볼릭 링크
-RUN ln -s /opt/conda/bin/conda /usr/local/bin/conda
-
-# ── 10. SSH 서버 설정 ────────────────────────────────────────────────────────
-RUN ssh-keygen -A \
-    && mkdir -p /run/sshd \
-    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config \
-    && sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config \
-    && sed -i 's/#UsePAM yes/UsePAM no/' /etc/ssh/sshd_config \
-    && sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
-
-# ── 11. Kubeflow 호환 jovyan 사용자 생성 ─────────────────────────────────────
-RUN if getent passwd 1000 > /dev/null 2>&1; then \
-        usermod -l jovyan -d /home/jovyan -m $(getent passwd 1000 | cut -d: -f1); \
-    else \
-        useradd -m -s /bin/bash -u 1000 jovyan; \
-    fi \
-    && usermod -aG users jovyan \
-    && echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
-    && echo "jovyan:jovyan" | chpasswd
-
-# ── 12. jovyan 환경 설정 ─────────────────────────────────────────────────────
-USER jovyan
-WORKDIR /home/jovyan
-
-RUN mkdir -p /home/jovyan/.claude \
-    && echo '{"autoUpdates":false}' > /home/jovyan/.claude/settings.json \
-    && mkdir -p /home/jovyan/.local/share/code-server/extensions \
+RUN mkdir -p /opt/neuropean \
     && printf '%s\n' \
        '# 🧠 Neuropean AI Workstation' \
        '' \
@@ -208,76 +197,89 @@ RUN mkdir -p /home/jovyan/.claude \
        '> **Python**: 3.12 (system) / 3.12 (conda base)  ' \
        '> **PyTorch**: 2.7.1 + CUDA 12.8  ' \
        '> **Conda**: `/opt/conda`' \
-       '' \
-       '---' \
-       '' \
-       '## 🐍 Conda 환경' \
-       '' \
-       '```bash' \
-       '# 최초 1회 초기화' \
-       'conda init bash && source ~/.bashrc' \
-       '' \
-       '# 새 환경 생성' \
-       'conda create -n myenv python=3.12' \
-       'conda activate myenv' \
-       'pip install -r requirements.txt' \
-       '```' \
-       '' \
-       '## 📦 설치된 주요 라이브러리' \
-       '' \
-       '| 분류 | 패키지 |' \
-       '|------|--------|' \
-       '| DL Framework | `torch` `torchvision` `pytorch_lightning` |' \
-       '| 의료 영상 | `nnunetv2` `monai` `SimpleITK` `nibabel` |' \
-       '| 데이터 | `numpy` `pandas` `scipy` `scikit-image` |' \
-       '| Web / API | `fastapi` `uvicorn` `pydantic` |' \
-       '' \
-       '## 🤖 Claude Code' \
-       '' \
-       '```bash' \
-       'claude' \
-       '```' \
-       '' \
-       '## 🗂️ nnU-Net 환경 변수' \
-       '' \
-       '```bash' \
-       'export nnUNet_raw="/data/nnUNet_raw"' \
-       'export nnUNet_preprocessed="/data/nnUNet_preprocessed"' \
-       'export nnUNet_results="/data/nnUNet_results"' \
-       '# ~/.bashrc 에 추가하면 영구 적용' \
-       '```' \
-       '' \
-       '## 🔧 Git 초기 설정' \
-       '' \
-       '```bash' \
-       'git config --global user.name "Your Name"' \
-       'git config --global user.email "you@example.com"' \
-       '```' \
-       '' \
-       '## 🖥️ GPU 상태 확인' \
-       '' \
-       '```bash' \
-       'nvidia-smi' \
-       'python -c "import torch; print(torch.cuda.is_available())"' \
-       '```' \
-       > /home/jovyan/README.md
+       > /opt/neuropean/README.md
+
+# ── 11. SSH 서버 설정 ────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server \
+    && rm -rf /var/lib/apt/lists/* \
+    # 호스트 키 생성
+    && ssh-keygen -A \
+    # privilege separation 디렉토리
+    && mkdir -p /run/sshd \
+    # sshd_config 설정: 비밀번호 인증 허용
+    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    # PAM 없이도 로그인 가능하도록
+    && sed -i 's/#UsePAM yes/UsePAM no/' /etc/ssh/sshd_config \
+    && sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
+
+# ── 12. Kubeflow 호환 jovyan 사용자 생성 ─────────────────────────────────────
+RUN if getent passwd 1000 > /dev/null 2>&1; then \
+        usermod -l jovyan -d /home/jovyan -m $(getent passwd 1000 | cut -d: -f1); \
+    else \
+        useradd -m -s /bin/bash -u 1000 jovyan; \
+    fi \
+    && usermod -aG users jovyan \
+    && echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    # jovyan 비밀번호 설정 (SSH 접속용)
+    && echo "jovyan:jovyan" | chpasswd
+
+# ── 13. jupyter-server-proxy로 code-server 등록 ─────────────────────────────
+COPY jupyter_server_config.py /etc/jupyter/jupyter_server_config.py
+
+# ── 14. entrypoint 스크립트 ──────────────────────────────────────────────────
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# ── 15. jovyan 환경 설정 ─────────────────────────────────────────────────────
+USER jovyan
+WORKDIR /home/jovyan
+
+RUN mkdir -p /home/jovyan/.claude \
+    && echo '{"autoUpdates":false}' > /home/jovyan/.claude/settings.json \
+    && mkdir -p /home/jovyan/.local/share/code-server/extensions \
+    && python3 -m ipykernel install --user --name python3 --display-name "Python 3.12 (CUDA 12.8)"
+
+# ── 16. VS Code Server 사전 설치 ─────────────────────────────────────────────
+# 로컬 VS Code의 commit hash 확인: code --version (두 번째 줄)
+# 또는: curl -fsSL https://update.code.visualstudio.com/api/commits/stable/server-linux-x64
+ARG VSCODE_COMMIT
+RUN if [ -n "${VSCODE_COMMIT}" ]; then \
+        mkdir -p /home/jovyan/.vscode-server/bin/${VSCODE_COMMIT} \
+        && curl -fsSL \
+           "https://update.code.visualstudio.com/commit:${VSCODE_COMMIT}/server-linux-x64/stable" \
+           -o /tmp/vscode-server.tar.gz \
+        && tar -xz --strip-components=1 \
+           -C /home/jovyan/.vscode-server/bin/${VSCODE_COMMIT} \
+           -f /tmp/vscode-server.tar.gz \
+        && rm /tmp/vscode-server.tar.gz; \
+    else \
+        echo "[WARN] VSCODE_COMMIT 미지정 — VS Code Server 사전 설치 건너뜀"; \
+    fi
 
 ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
+ENV NB_PREFIX="/"
 
 ARG IMAGE_VERSION=v2.4.1
 LABEL maintainer="neuropean" \
       version="${IMAGE_VERSION}" \
-      type="vscode" \
+      type="jupyter" \
       base="nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04" \
       python.version="3.12" \
       cuda.version="12.8.1" \
       node.version="20" \
-      code-server.version="${CODE_SERVER_VERSION}"
+      code-server.version="${CODE_SERVER_VERSION}" \
+      vscode.commit="${VSCODE_COMMIT}"
 
 EXPOSE 8888 22
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8888/healthz || exit 1
+    CMD curl -f http://localhost:8888/api || exit 1
 
-ENTRYPOINT ["tini", "--"]
-CMD ["/bin/bash", "-c", "mkdir -p /run/sshd && sudo /usr/sbin/sshd && exec code-server --bind-addr 0.0.0.0:8888 --auth none /home/jovyan"]
+ENTRYPOINT ["tini", "--", "/usr/local/bin/entrypoint.sh"]
+CMD ["jupyter", "lab", \
+     "--ip=0.0.0.0", \
+     "--port=8888", \
+     "--no-browser", \
+     "--NotebookApp.token=''", \
+     "--NotebookApp.password=''"]

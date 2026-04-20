@@ -53,8 +53,8 @@ RUN curl -fsSL https://code-server.dev/install.sh \
     | sh -s -- --version=${CODE_SERVER_VERSION} \
     && rm -rf /root/.cache
 
-# ── 5. Claude Code + GitHub Copilot CLI 전역 설치 ───────────────────────────
-RUN npm install -g @anthropic-ai/claude-code @github/copilot
+# ── 5. Claude Code 전역 설치 ────────────────────────────────────────────────
+RUN npm install -g @anthropic-ai/claude-code
 
 # ── 6. Miniconda 설치 (버전 고정) ───────────────────────────────────────────
 ARG MINICONDA_VERSION=py312_24.11.1-0

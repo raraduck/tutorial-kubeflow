@@ -675,3 +675,27 @@ sudo ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \
   --key=/etc/ssl/etcd/ssl/admin-cl01-key.pem \
   alarm disarm
 ```
+
+## 4. pty max 를 8192 수준으로 높이기 (원인불명의 terminal 좀비 프로세스 증가)
+```bash
+NODES=(
+  gn131 gn132 gn134 gn135
+  gn137 gn138 gn140 gn142 gn143
+  gn144 gn147 gn148 gn150 gn181
+  gn182 gn183 gn184
+)
+
+# 현재 pty/nr 확인
+for ND in "${NODES[@]}"; do
+  echo -n "$ND: "; ssh neuroman@${ND} cat /proc/sys/kernel/pty/nr
+done
+# 즉시 적용 + 영구 설정 (올바른 방법)
+for ND in "${NODES[@]}"; do
+  echo "=== $ND ==="
+  ssh neuroman@${ND} 'sudo sysctl -w kernel.pty.max=8192 && echo "kernel.pty.max = 8192" | sudo tee -a /etc/sysctl.conf'
+done
+for ND in "${NODES[@]}"; do
+  echo -n "$ND: "; ssh neuroman@${ND} cat /proc/sys/kernel/pty/max
+done
+# 모든 노드에서 8192가 출력되면 정상 적용된 겁니다.
+```

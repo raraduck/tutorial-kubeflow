@@ -1,19 +1,20 @@
 #!/bin/bash
 # ── Neuropean AI Workstation entrypoint ──────────────────────────────────────
+# Kubeflow PVC 마운트 이후 실행되므로 홈 디렉토리 초기화를 여기서 처리
 
 set -e
 
 HOME_DIR="/home/jovyan"
 
-# 1. README.md
+# 1. README.md : PVC로 덮어씌워지므로 매 시작 시 원본에서 복사
 cp -f /opt/neuropean/README.md "${HOME_DIR}/README.md"
 
-# 2. .bashrc
+# 2. .bashrc : 없으면 생성 (PVC 신규 마운트 시 빈 홈인 경우 대비)
 if [ ! -f "${HOME_DIR}/.bashrc" ]; then
     touch "${HOME_DIR}/.bashrc"
 fi
 
-# 3. .bash_profile
+# 3. .bash_profile : .bashrc 를 source 하도록 (login shell 대비)
 if [ ! -f "${HOME_DIR}/.bash_profile" ]; then
     printf '%s\n' \
         '# source .bashrc from .bash_profile' \
@@ -21,20 +22,9 @@ if [ ! -f "${HOME_DIR}/.bash_profile" ]; then
         > "${HOME_DIR}/.bash_profile"
 fi
 
-# ── PTY 초기화 (Ubuntu 24.04 컨테이너에서 /dev/ptmx 누락 문제 해결) ──────────
-if ! mountpoint -q /dev/pts 2>/dev/null; then
-    sudo mount -t devpts devpts /dev/pts \
-        -o newinstance,ptmxmode=0666,mode=0620,gid=5 2>/dev/null || true
-fi
-if [ ! -c /dev/ptmx ]; then
-    sudo mknod -m 666 /dev/ptmx c 5 2 2>/dev/null || \
-    sudo ln -sf /dev/pts/ptmx /dev/ptmx 2>/dev/null || true
-fi
-sudo chmod 666 /dev/ptmx 2>/dev/null || true
-
 # 4. SSH 서버 시작
 mkdir -p /run/sshd
 sudo /usr/sbin/sshd
 
-# 5. CMD 실행
+# 5. CMD 실행 (jupyter lab 등)
 exec "$@"

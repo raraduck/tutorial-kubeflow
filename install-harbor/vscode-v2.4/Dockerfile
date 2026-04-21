@@ -96,7 +96,7 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 
 # nnU-Net / MONAI / 의료 영상
 RUN pip3 install --no-cache-dir --break-system-packages \
-    nnunetv2==2.5.1 \
+    nnunetv2==2.6.4 \
     monai \
     SimpleITK==2.4.0 \
     nibabel==5.2.1 \
@@ -264,7 +264,7 @@ RUN mkdir -p /home/jovyan/.claude \
 
 ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
 
-ARG IMAGE_VERSION=v2.4.1
+ARG IMAGE_VERSION=v2.4.3
 LABEL maintainer="neuropean" \
       version="${IMAGE_VERSION}" \
       type="vscode" \

@@ -1,3 +1,8 @@
+import os
+
+# Jupyter 서버 프로세스 umask 설정 (GUI 파일 생성 시 777 권한 적용)
+os.umask(0o000)
+
 c.ServerProxy.servers = {
     "vscode": {
         "command": [
@@ -15,7 +20,6 @@ c.ServerProxy.servers = {
 }
 
 # NB_PREFIX 기반 base_url 자동 반영
-import os
 nb_prefix = os.environ.get("NB_PREFIX", "/")
 c.ServerApp.base_url = nb_prefix
 c.ServerApp.tornado_settings = {"headers": {"Content-Security-Policy": "frame-ancestors *"}}
